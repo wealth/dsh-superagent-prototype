@@ -46,7 +46,7 @@ it('filters the Thread list by activity, and unsubscribes from a Thread page aft
   await click('这个文案好奇怪')
   await click(zh.unsubscribe)
   await click(zh.confirm)
-  expect(server.requests.some(request => request.path === 'threads/feishu:oc_1:om_root/unsubscribe')).toBe(true)
+  expect(server.requests.some(request => request.path === 'threads/mattermost:cteam000000000000000000000:proot000000000000000000000/unsubscribe')).toBe(true)
 })
 
 it('folds consecutive automated messages from one sender on a Thread, showing the newest with its text', async () => {
@@ -68,11 +68,11 @@ it('folds consecutive automated messages from one sender on a Thread, showing th
 it('reads the page around a link\'s target once, also for a Trigger the Thread does not have, while it polls the newest page', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   onTestFinished(() => { vi.useRealTimers() })
-  at({ page: 'trigger', id: 'feishu:oc_1:om_root', query: { trigger: 'gone' } })
+  at({ page: 'trigger', id: 'mattermost:cteam000000000000000000000:proot000000000000000000000', query: { trigger: 'gone' } })
   await mount()
   await act(async () => { await vi.advanceTimersByTimeAsync(5000) }); await settle()
   expect(server.requests.filter(request => request.path.startsWith('threads/')).map(request => request.path)).toEqual([
-    'threads/feishu:oc_1:om_root?limit=50', 'threads/feishu:oc_1:om_root?limit=50&around=gone', 'threads/feishu:oc_1:om_root?limit=50'])
+    'threads/mattermost:cteam000000000000000000000:proot000000000000000000000?limit=50', 'threads/mattermost:cteam000000000000000000000:proot000000000000000000000?limit=50&around=gone', 'threads/mattermost:cteam000000000000000000000:proot000000000000000000000?limit=50'])
 })
 
 it('shows a follow-up delivered to its Ticket without an Eval, a hand-back with why, and a Ticket that follows the Thread for context', async () => {
@@ -81,7 +81,7 @@ it('shows a follow-up delivered to its Ticket without an Eval, a hand-back with 
     timeline: [trigger('f1', '2026-09-23T00:00:00Z', { disposition: { delivered: true, fanout: ['t1'] } }),
       trigger('f2', '2026-09-23T00:01:00Z', { disposition: { queued: true, fanout: ['t1'], handbacks: [{ ticketId: 't1', title: '修复回归',
         reason: 'Asks for a new page', at: '2026-09-23T00:02:00Z' }] } })] })
-  at({ page: 'trigger', id: 'feishu:oc_1:om_root' })
+  at({ page: 'trigger', id: 'mattermost:cteam000000000000000000000:proot000000000000000000000' })
   await mount()
   const events = () => all('.dt-event').map(event => [event.querySelector('.dt-event-text')?.textContent,
     [...event.querySelectorAll('.dt-tag')].map(tag => tag.textContent), event.querySelector('.dt-hint')?.textContent])
@@ -118,7 +118,7 @@ it('reads back the Triggers between the newest page and the earlier ones it show
   vi.useFakeTimers({ shouldAdvanceTime: true })
   onTestFinished(() => { vi.useRealTimers() })
   const thread = busyThread(120)
-  at({ page: 'trigger', id: 'feishu:oc_1:om_root' })
+  at({ page: 'trigger', id: 'mattermost:cteam000000000000000000000:proot000000000000000000000' })
   await mount()
   expect(shown()).toEqual(range(70, 119))
   await click(zh.loadEarlier)
@@ -136,7 +136,7 @@ it('reads back the Triggers between the newest page and the earlier ones it show
 
 it('shows a link\'s target far back with every Trigger after it', async () => {
   busyThread(120)
-  at({ page: 'trigger', id: 'feishu:oc_1:om_root', query: { trigger: 'm10' } })
+  at({ page: 'trigger', id: 'mattermost:cteam000000000000000000000:proot000000000000000000000', query: { trigger: 'm10' } })
   await mount()
   expect(shown()).toEqual(range(0, 119))
   expect(document.querySelector('.dt-highlight .dt-event-text')?.textContent).toBe('message m10')

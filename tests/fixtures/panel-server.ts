@@ -360,7 +360,8 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
         const refused = new SetupError('mattermostUnreachable', { url: 'https://broken.test', output: 'connect ECONNREFUSED' })
         return refuse(400, refused.message, { setup: refused.problem })
       }
-      restarting = (config.url ?? '') !== (server.settings.sources[source.kind]?.config.url ?? '')
+      const storedConfig = server.settings.sources[source.kind]?.config ?? {}
+      restarting = (SETUP_FIELDS[source.kind] ?? []).some(key => (config as Record<string, unknown>)[key] !== storedConfig[key])
       server.settings = { ...server.settings, sources: { ...server.settings.sources, [source.kind]: { enabled, config } } }
     }
     server.revisions[block] = (server.revisions[block] ?? 0) + 1

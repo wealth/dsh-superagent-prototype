@@ -63,14 +63,14 @@ it('saves the Eval block on the Policy settings and the Executor with its execut
 it('loads configuration history on demand with localized changes, Source field labels and notified Tickets', async () => {
   server.history = { current: 3, policyVersion: 'abcdef1234567890', items: [{ revision: 3, savedAt: '2026-09-22T00:00:00Z',
     source: 'sync', policyVersion: 'abcdef1234567890', policyChanged: true, notified: [{ id: 't1', title: '修复回归' }], block: 'policy',
-    changes: [{ code: 'mode', from: 'off', to: 'observe' }, { code: 'sourceRowsAdded', source: 'feishu', field: 'allowed', items: ['Bob'],
-      part: true }, { code: 'sourceField', source: 'feishu', field: 'syncChat', from: '', to: 'oc_team', part: true }] }] }
+    changes: [{ code: 'mode', from: 'off', to: 'observe' }, { code: 'sourceRowsAdded', source: 'mattermost', field: 'allowed', items: ['Bob'],
+      part: true }, { code: 'sourceField', source: 'mattermost', field: 'syncChannel', from: '', to: 'cteam000000000000000000000', part: true }] }] }
   await mount()
   await click(zh['tab.eval'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   expect(server.requests.some(request => request.path === 'policy/history')).toBe(false)
   await click(zh.configHistory)
-  for (const expected of ['第 3 次保存 · 从群同步', '生成策略版本 abcdef12', '接单模式：关闭 → 仅观察', '飞书 · 能发起工作的飞书用户 新增：Bob', '飞书 · 同步来源群：未设置 → oc_team',
+  for (const expected of ['第 3 次保存 · 从群同步', '生成策略版本 abcdef12', '接单模式：关闭 → 仅观察', 'Mattermost · 能发起工作的 Mattermost 用户 新增：Bob', 'Mattermost · 同步来源频道：未设置 → oc_team',
     '因策略变更通知了 1 个进行中的工单：修复回归']) expect(text()).toContain(expected)
 })
 

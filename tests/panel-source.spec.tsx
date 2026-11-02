@@ -11,7 +11,7 @@ it('shows each Source\'s state on the Source status and opens its settings from 
   await mount()
   await click(zh['tab.source'])
   expect(document.querySelector('.dt-status-title')?.textContent).toBe(zh.statusTitle)
-  expect(all('.dt-form > .dt-list > .dt-row .dt-row-name').map(title => title.textContent)).toEqual(['飞书', 'GitHub'])
+  expect(all('.dt-form > .dt-list > .dt-row .dt-row-name').map(title => title.textContent)).toEqual(['Mattermost', 'GitHub'])
   expect(all('.dt-form > .dt-list > .dt-row')[0]!.querySelector('.dt-row-meta')?.textContent).toBe('24 小时到达 12被过滤 2最近 ' + document.querySelector('.dt-row-meta time, .dt-row-meta .dt-lv:last-child .dt-lv-value')?.textContent)
   expect(text()).toContain(zh['sourceState.error'])
   expect(text()).toContain('socket closed')
@@ -25,38 +25,38 @@ it('shows each Source\'s state on the Source status and opens its settings from 
   expect(all('.dt-card')[1]!.textContent).toContain('部署检查未通过：没有设置智能体的 GitHub CLI。')
 })
 
-it('folds more than six chats into a line of their names', async () => {
-  const chats = Array.from({ length: 7 }, (_, n) => ({ chatId: n ? `oc_c${n}` : 'oc_team', listen: 'all' as const }))
-  server.settings.sources.feishu = { ...server.settings.sources.feishu!, config: { ...server.settings.sources.feishu!.config, chats } }
+it('folds more than six channels into a line of their names', async () => {
+  const channels = Array.from({ length: 7 }, (_, n) => ({ channelId: n ? `cc${n}00000000000000000000000` : 'cteam000000000000000000000', listen: 'all' as const }))
+  server.settings.sources.mattermost = { ...server.settings.sources.mattermost!, config: { ...server.settings.sources.mattermost!.config, channels } }
   await mount()
   await click(zh['tab.source'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   const summary = all('.dt-card')[0]!.querySelector('.dt-rows-summary')!
-  expect(summary.textContent).toBe(['团队群', 'oc_c1', 'oc_c2', 'oc_c3', 'oc_c4', 'oc_c5', 'oc_c6'].join('、'))
+  expect(summary.textContent).toBe(['团队频道', 'cc100000000000000000000000', 'cc200000000000000000000000', 'cc300000000000000000000000', 'cc400000000000000000000000', 'cc500000000000000000000000', 'cc600000000000000000000000'].join('、'))
 })
 
-it('rereads the chats the bot has joined on request and says which are new, keeping unsaved edits', async () => {
+it('rereads the channels the bot has joined on request and says which are new, keeping unsaved edits', async () => {
   await mount()
   await click(zh['tab.source'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   const feishu = () => all('.dt-card')[0]!
-  const button = () => [...feishu().querySelectorAll('button')].find(item => item.textContent === '刷新群列表')!
+  const button = () => [...feishu().querySelectorAll('button')].find(item => item.textContent === '刷新频道列表')!
   await click([...feishu().querySelectorAll('button')].find(item => item.textContent === '添加')!)
-  server.joining = { oc_new: '新群' }
+  server.joining = { oc_new: '新频道' }
   await click(button())
-  expect(server.requests.find(request => request.path === 'sources/feishu/labels')).toMatchObject({ method: 'POST' })
-  expect(document.querySelector('.dt-toast')?.textContent).toBe('列表已更新，新增：新群')
+  expect(server.requests.find(request => request.path === 'sources/mattermost/labels')).toMatchObject({ method: 'POST' })
+  expect(document.querySelector('.dt-toast')?.textContent).toBe('列表已更新，新增：新频道')
   // The row being added stays, and now offers the new chat.
-  const pick = feishu().querySelectorAll('.dt-rows-item')[1]!.querySelector<HTMLSelectElement>('select[aria-label="选择机器人已加入的群"]')!
-  expect([...pick.options].map(option => option.textContent)).toEqual(['选择机器人已加入的群', '另一个群', '新群'])
+  const pick = feishu().querySelectorAll('.dt-rows-item')[1]!.querySelector<HTMLSelectElement>('select[aria-label="选择机器人所在的频道"]')!
+  expect([...pick.options].map(option => option.textContent)).toEqual(['选择机器人所在的频道', '另一个频道', '新频道'])
   await click(button())
   expect([...document.querySelectorAll('.dt-toast')].at(-1)?.textContent).toBe(zh.labelsCurrent)
-  server.joinError = 'lark-cli: token expired'
+  server.joinError = 'Mattermost fetch failed'
   await click(button())
-  expect([...document.querySelectorAll('.dt-toast')].at(-1)?.textContent).toBe('读取失败，列表保持不变：lark-cli: token expired')
+  expect([...document.querySelectorAll('.dt-toast')].at(-1)?.textContent).toBe('读取失败，列表保持不变：Mattermost fetch failed')
   expect(button().disabled).toBe(false)
   // Only a field whose key column offers a refresh shows the button.
-  expect([...all('.dt-card')[1]!.querySelectorAll('button')].some(item => item.textContent === '刷新群列表')).toBe(false)
+  expect([...all('.dt-card')[1]!.querySelectorAll('button')].some(item => item.textContent === '刷新频道列表')).toBe(false)
 })
 
 it('renders each Source\'s settings from its kind\'s fields and saves one Source against its own revision', async () => {
@@ -64,24 +64,24 @@ it('renders each Source\'s settings from its kind\'s fields and saves one Source
   await click(zh['tab.source'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   const cards = all('.dt-card')
-  expect(cards.map(card => card.querySelector('.dt-row-title')?.firstChild?.textContent)).toEqual(['飞书', 'GitHub'])
+  expect(cards.map(card => card.querySelector('.dt-row-title')?.firstChild?.textContent)).toEqual(['Mattermost', 'GitHub'])
   const feishu = cards[0]!
-  expect(feishu.textContent).toContain('接收的群')
+  expect(feishu.textContent).toContain('接收的频道')
   await click([...feishu.querySelectorAll('button')].find(button => button.textContent === '添加')!)
   const rows = feishu.querySelectorAll('.dt-rows-item')
-  // A saved chat shows its name; a row being added picks from the joined chats not yet configured.
-  expect(rows[0]!.querySelector('.dt-row-label')?.textContent).toBe('团队群')
-  expect(rows[0]!.querySelector('select[aria-label="选择机器人已加入的群"]')).toBeNull()
-  const pick = rows[1]!.querySelector<HTMLSelectElement>('select[aria-label="选择机器人已加入的群"]')!
-  expect([...pick.options].map(option => option.textContent)).toEqual(['选择机器人已加入的群', '另一个群'])
-  await type(pick, 'oc_other')
+  // A saved chat shows its name; a row being added picks from the joined channels not yet configured.
+  expect(rows[0]!.querySelector('.dt-row-label')?.textContent).toBe('团队频道')
+  expect(rows[0]!.querySelector('select[aria-label="选择机器人所在的频道"]')).toBeNull()
+  const pick = rows[1]!.querySelector<HTMLSelectElement>('select[aria-label="选择机器人所在的频道"]')!
+  expect([...pick.options].map(option => option.textContent)).toEqual(['选择机器人所在的频道', '另一个频道'])
+  await type(pick, 'cother00000000000000000000')
   await type(rows[1]!.querySelector('select[aria-label="接收"]')!, 'all')
-  await click('接收私聊')
+  await click('接收私信')
   await act(async () => { feishu.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) }); await settle()
-  expect(server.requests.find(request => request.path === 'settings/source:feishu')).toMatchObject({ method: 'PUT', body: { revision: 0,
-    value: { enabled: true, config: { chats: [{ chatId: 'oc_team', listen: 'mentions' }, { chatId: 'oc_other', listen: 'all' }],
+  expect(server.requests.find(request => request.path === 'settings/source:mattermost')).toMatchObject({ method: 'PUT', body: { revision: 0,
+    value: { enabled: true, config: { channels: [{ channelId: 'cteam000000000000000000000', listen: 'mentions' }, { channelId: 'cother00000000000000000000', listen: 'all' }],
       directMessages: false } } } })
-  expect(server.settings.sources.feishu!.config).toMatchObject({ directMessages: false })
+  expect(server.settings.sources.mattermost!.config).toMatchObject({ directMessages: false })
   const github = all('.dt-card')[1]!
   await click('运行来源：GitHub')
   server.revisions['source:github'] = 5
@@ -108,7 +108,7 @@ it('shows the account each CLI signs in as, and keeps a saved CLI on screen whil
   expect(github.textContent).toContain('当前账号 @agent-bot')
   await click([...github.querySelectorAll<HTMLElement>('[data-disclosure-row]')].find(row => row.textContent?.includes('高级'))!)
   expect(labels()).toEqual(['监听的仓库', '智能体的 GitHub CLI', '轮询间隔 / 秒', '连续失败几次后报告异常'])
-  expect(all('.dt-card')[0]!.textContent).toContain('当前机器人 Widgets Bot')
+  expect(all('.dt-card')[0]!.textContent).toContain('当前机器人 @dsh-bot')
   await type(field<HTMLInputElement>('智能体的 GitHub CLI'), '/opt/bin/gh-agent')
   expect(github.textContent).toContain('保存会重启 dsh-superagent：2 个进行中的派工会中断，并带恢复说明重新开始。')
   await act(async () => { github.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) }); await settle()
@@ -153,14 +153,14 @@ it('points a setup problem at the settings that fix it', async () => {
 })
 
 it('shows a failed Feishu bot check as a problem of the Feishu Source only, with a check after a fix outside dsh-superagent', async () => {
-  server.setup = { ...server.setup, feishuProblem: problemOf('feishuBotNotReady', { app: 'cli_bot', status: 'missing' }),
-    accounts: { ...server.setup.accounts!, feishu: null } }
+  server.setup = { ...server.setup, mattermostProblem: problemOf('mattermostUnreachable', { url: 'https://broken.test', output: 'connect ECONNREFUSED' }),
+    accounts: { ...server.setup.accounts!, mattermost: null } }
   await mount()
-  expect(text()).toContain(zh.problemSetupFeishu)
-  expect(text()).not.toContain('飞书 来源异常')
-  await click(find(zh.problemSetupFeishu, 'button, a, [role="button"]'))
+  expect(text()).toContain(zh.problemSetupMattermost)
+  expect(text()).not.toContain('Mattermost 来源异常')
+  await click(find(zh.problemSetupMattermost, 'button, a, [role="button"]'))
   const feishu = all('.dt-card')[0]!
-  expect(feishu.textContent).toContain('部署检查未通过：应用 cli_bot 的机器人身份状态是 missing；用 lark-cli 配置应用密钥。')
+  expect(feishu.textContent).toContain('部署检查未通过：Mattermost 服务器 https://broken.test 没有响应：connect ECONNREFUSED')
   // dsh-superagent runs meanwhile, so checking again asks first: the restart interrupts running Executor Sessions.
   await click([...feishu.querySelectorAll('button')].find(button => button.textContent === '重新检查')!)
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain('重新检查会重启 dsh-superagent：2 个进行中的派工会中断')
@@ -173,8 +173,8 @@ it('shows a failed Feishu bot check as a problem of the Feishu Source only, with
 })
 
 it('leaves Feishu out of a GitHub-only deployment', async () => {
-  server.setup = { ...server.setup, accounts: { ...server.setup.accounts!, feishu: null } }
-  server.settings = { ...server.settings, sources: { ...server.settings.sources, feishu: { enabled: false, config: {} } } }
+  server.setup = { ...server.setup, accounts: { ...server.setup.accounts!, mattermost: null } }
+  server.settings = { ...server.settings, sources: { ...server.settings.sources, mattermost: { enabled: false, config: {} } } }
   at({ page: 'settings', query: { group: 'prompts' } })
   await mount()
   await click(tab(zh.promptViewFull))
@@ -203,7 +203,7 @@ it('shows a Source\'s health in the interface language, and a diagnostic as repo
   const github = all('.dt-form > .dt-list > .dt-row').find(row => row.querySelector('.dt-row-name')?.textContent === 'GitHub')!
   expect(github.textContent).toContain('GitHub 来源：连续 3 次轮询失败，最近一次：EOF')
   expect(github.textContent).not.toContain('consecutive')
-  const feishu = all('.dt-form > .dt-list > .dt-row').find(row => row.querySelector('.dt-row-name')?.textContent === '飞书')!
+  const feishu = all('.dt-form > .dt-list > .dt-row').find(row => row.querySelector('.dt-row-name')?.textContent === 'Mattermost')!
   expect(feishu.querySelector('.dt-mono')?.textContent).toBe('socket closed')
 })
 
@@ -212,9 +212,9 @@ it('shows a refused Source save with the output of the tool that failed on its o
   await click(zh['tab.source'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   const feishu = all('.dt-card')[0]!
-  await type(field<HTMLInputElement>('机器人的 lark-cli'), 'lark-broken')
+  await type(field<HTMLInputElement>('服务器地址'), 'lark-broken')
   await act(async () => { feishu.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) }); await settle()
-  expect(feishu.querySelector('.dt-savebar [role="alert"]')?.textContent).toBe('机器人的 lark-cli 不可用。\nlark-cli: app secret missing')
+  expect(feishu.querySelector('.dt-savebar [role="alert"]')?.textContent).toBe('Mattermost 服务器 https://broken.test 没有响应：connect ECONNREFUSED')
 })
 
 it('shows a setup problem on its Source card within one read of the settings, which the settings groups share', async () => {
@@ -234,9 +234,9 @@ it('shows a setup problem on its Source card within one read of the settings, wh
 
 it('lists the messages a Source did not send in the last day under it, newest first, with why and where they belong', async () => {
   // Include a drop older than 24h (m0) and one with a missing thread (m1).
-  server.dropped = [droppedReply('m3', 1, 'feishu', 'channelGone', { ticket: { id: 't1', title: '修复回归' } }),
-    droppedReply('m2', 3, 'feishu', 'channelIgnored'), droppedReply('m1', 4, 'feishu', 'channelGone', { thread: false }),
-    droppedReply('m0', 30, 'feishu', 'channelGone'), droppedReply('g0', 2, 'github', 'channelGone')]
+  server.dropped = [droppedReply('m3', 1, 'mattermost', 'channelGone', { ticket: { id: 't1', title: '修复回归' } }),
+    droppedReply('m2', 3, 'mattermost', 'channelIgnored'), droppedReply('m1', 4, 'mattermost', 'channelGone', { thread: false }),
+    droppedReply('m0', 30, 'mattermost', 'channelGone'), droppedReply('g0', 2, 'github', 'channelGone')]
   await mount()
   await click(zh['tab.source'])
   const [feishu, github] = all('.dt-form > .dt-list > .dt-row')
@@ -255,7 +255,7 @@ it('lists the messages a Source did not send in the last day under it, newest fi
   await click(disclosure(document.body))
   // A Feishu Channel names its chat; the link opens the Thread of the message it answers, which the host found.
   await click(find(zh['term.thread'], '.dt-disclosure-body button'))
-  expect(server.requests.some(request => request.path.startsWith('threads/feishu:oc_1:om_root'))).toBe(true)
+  expect(server.requests.some(request => request.path.startsWith('threads/mattermost:cteam000000000000000000000:proot000000000000000000000'))).toBe(true)
   expect(text()).not.toContain(zh.threadNotFound)
 })
 

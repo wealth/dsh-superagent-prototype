@@ -44,6 +44,7 @@ export const mattermostKind: SourceKind<MattermostConfig> = {
     { key: 'token', type: 'text', label: { zh: '机器人令牌', en: 'Bot token', ru: 'Токен бота' },
       hint: { zh: '机器人账号的个人访问令牌。只保存在本机的 DSH 配置里，不在面板上显示。', en: 'A personal access token of the bot account. Kept in the local DSH configuration; the panel never shows it.',
         ru: 'Персональный токен доступа учётной записи бота. Хранится в локальной конфигурации DSH, в панели не показывается.' } },
+    { key: 'bot', type: 'fact', settings: 'deployment' },
     { key: 'channels', type: 'rows', label: { zh: '接收的频道', en: 'Channels', ru: 'Каналы' },
       hint: { zh: '“仅 @”只接收 @ 机器人的消息和已有工单的线程；“全部消息”也接收其余消息，评估可以按规则从中推断工作。', en: '"@ only" receives messages that mention the bot and Threads that have Tickets; "All" also receives the rest, from which Eval may infer work under the rules.',
         ru: '«Только @» принимает сообщения с упоминанием бота и треды с тикетами; «Все сообщения» принимает и остальные, из которых оценка может вывести работу по правилам.' },
@@ -130,7 +131,7 @@ export const mattermostKind: SourceKind<MattermostConfig> = {
     ],
     values: ({ deployment, trigger }) => ({ DSH_SUPERAGENT_MATTERMOST_BOT: deployment.mattermost?.username ?? '', DSH_SUPERAGENT_MATTERMOST_CHANNEL: trigger?.source === SOURCE ? String(trigger.meta.channelId ?? '') : '' }),
   },
-  facts: (deployment): Record<string, Localized | string> => deployment?.mattermost ? { cli: { zh: `当前机器人 @${deployment.mattermost.username}`, en: `Current bot @${deployment.mattermost.username}`, ru: `Текущий бот @${deployment.mattermost.username}` } } : {},
+  facts: (deployment): Record<string, Localized | string> => deployment?.mattermost ? { bot: { zh: `当前机器人 @${deployment.mattermost.username}`, en: `Current bot @${deployment.mattermost.username}`, ru: `Текущий бот @${deployment.mattermost.username}` } } : {},
 }
 
 /** Returns the Mattermost Source's settings, falling back to schema defaults while the plugin is disabled. */
