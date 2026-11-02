@@ -1,39 +1,39 @@
 # dsh-superagent
 
-> **Research prototype for reference only, not an official DeepSeek product.** This code grew out of our team's day-to-day development work, with much of the engineering done by coding agents. Treat it as research code, not production-ready software. It may still contain bugs, and its coding style and engineering practices may be inconsistent. Review and adapt it before using it in your own environment.
+> **Исследовательский прототип только для ознакомления, не является официальным продуктом DeepSeek.** Этот код вырос из повседневной работы нашей команды, и значительная часть инженерной работы выполнена кодирующими агентами. Относитесь к нему как к исследовательскому, а не готовому к эксплуатации коду. В нём ещё могут быть ошибки, а стиль и инженерные практики — непоследовательны. Изучите и адаптируйте его, прежде чем использовать в своей среде.
 >
-> We have adapted it for publication, so it is not identical to our internal version or the implementation described in *Exploring Super-agent Design: Towards a More Autonomous Agent System*. Some designs discussed in the article are directions for future development and are not implemented in this prototype.
+> Мы адаптировали его для публикации, поэтому он не идентичен нашей внутренней версии или реализации, описанной в *Exploring Super-agent Design: Towards a More Autonomous Agent System*. Часть решений, о которых говорится в статье, — это направления будущего развития, и в этом прототипе они не реализованы.
 
-dsh-superagent is a proactive coding agent for one GitHub repository, packaged as a bundle for [DeepSeek Harness](https://www.deepseek.com/en/harness/). It listens to GitHub and, optionally, Feishu. When someone allowed asks the agent for work, it opens a work item, works on it in its own agent session and directory, and answers in the original conversation, for example with a pull request. A web panel shows what needs a person.
+dsh-superagent — это проактивный кодирующий агент для одного репозитория GitHub, упакованный как бандл для [DeepSeek Harness](https://www.deepseek.com/en/harness/). Он слушает GitHub и, опционально, Mattermost. Когда кто-то из допущенных просит агента о работе, тот открывает рабочий элемент, выполняет его в собственной сессии агента и директории и отвечает в исходном разговоре, например пулл-реквестом. Веб-панель показывает, что требует участия человека.
 
-It is also a way of working with an agent: **take as little human attention as possible, and give as much value as possible.** An agent that can act for a whole team can also waste a whole team's attention, so it acts only when asked or when a rule the team wrote allows it, and speaks only when someone must act or can use a result. [docs/000-philosophy.md](docs/000-philosophy.md) explains the principle and what it asks of the operator.
+Это также способ работы с агентом: **забирать как можно меньше внимания человека и давать как можно больше ценности.** Агент, способный действовать от имени целой команды, может так же легко растратить внимание всей команды, поэтому он действует только по запросу или когда позволяет правило, написанное командой, и говорит только тогда, когда кто-то должен действовать или может воспользоваться результатом. [docs/000-philosophy.md](docs/000-philosophy.md) объясняет этот принцип и чего он требует от оператора.
 
-## Setup
+## Установка
 
-Setup has many steps, so an agent does it with you. Ask your coding agent:
+Установка состоит из многих шагов, поэтому агент выполняет её вместе с вами. Попросите своего кодирующего агента:
 
-> Read SETUP.md in this repository and set up dsh-superagent with me.
+> Прочитай SETUP.md в этом репозитории и настрой dsh-superagent вместе со мной.
 
-It asks one short question at a time, shows the full plan once, and then installs and configures everything. [SETUP.md](SETUP.md) is what it follows.
+Он задаёт по одному короткому вопросу, один раз показывает полный план, а затем устанавливает и настраивает всё. Именно [SETUP.md](SETUP.md) он и следует.
 
-## Documentation
+## Документация
 
-Read the numbered documents in order; each builds only on the ones before it.
+Читайте пронумерованные документы по порядку; каждый опирается только на предыдущие.
 
-- [000 Philosophy](docs/000-philosophy.md)
-- [001 Domain model](docs/001-domain.md)
-- [002 Authorization](docs/002-authorization.md)
-- [003 Execution](docs/003-execution.md)
-- [004 Prompts](docs/004-prompts.md)
-- [005 Panel](docs/005-panel.md)
-- [006 Deployment](docs/006-deployment.md): manual setup, configuration, upgrades and troubleshooting
-- [007 Architecture](docs/007-architecture.md)
-- [008 Cookbook](docs/008-cookbook.md): adding a Source
+- [000 Философия](docs/000-philosophy.md)
+- [001 Модель предметной области](docs/001-domain.md)
+- [002 Авторизация](docs/002-authorization.md)
+- [003 Выполнение](docs/003-execution.md)
+- [004 Промпты](docs/004-prompts.md)
+- [005 Панель](docs/005-panel.md)
+- [006 Развёртывание](docs/006-deployment.md): ручная установка, настройка, обновления и устранение неполадок
+- [007 Архитектура](docs/007-architecture.md)
+- [008 Кулинарная книга](docs/008-cookbook.md): добавление Источника
 
-## Development
+## Разработка
 
-`pnpm check` runs the typecheck, the tests and the build.
+`pnpm check` запускает проверку типов, тесты и сборку.
 
-## License
+## Лицензия
 
 [MIT](LICENSE)
