@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { Store } from '../src/app/store.ts'
 import { SettingsSchema } from '../src/policy.ts'
 import { SourceRegistry } from '../src/sources/registry.ts'
-import { feishuKind } from '../src/sources/feishu.ts'
+import { mattermostKind } from '../src/sources/mattermost.ts'
 import { githubKind } from '../src/sources/github.ts'
 import { snapshot, threadSummary, ticketSummary, triggerView } from '../src/app/views/records.ts'
 import { basisFacts, ticketDetail } from '../src/app/views/tickets.ts'
@@ -15,8 +15,7 @@ import { overview } from '../src/app/views/overview.ts'
 import { markdown, plain } from '../src/app/views/text.ts'
 import { policyHistory } from '../src/app/settings-history.ts'
 import { KV } from '../src/kv.ts'
-import { feishuLink } from '../src/sources/feishu-channel.ts'
-import { feishuChannel, feishuTriggerId } from '../src/sources/feishu-trigger.ts'
+import { mattermostChannel, mattermostLink, mattermostTriggerId } from '../src/sources/mattermost.ts'
 import { githubLink } from '../src/sources/github-channel.ts'
 import { githubChannel } from '../src/sources/github-trigger.ts'
 import { followupOwners, type ChannelRef } from '../src/core/index.ts'
@@ -28,7 +27,7 @@ beforeEach(() => {
   store = new Store(join(directory, 'orchestrator.sqlite'))
 })
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }) })
-const links = (channel: ChannelRef) => (channel.source === 'feishu' ? feishuLink : githubLink)(channel.address, {})
+const links = (channel: ChannelRef) => (channel.source === 'mattermost' ? mattermostLink : githubLink)(channel.address, {})
 const drop = (id: string, channel: ChannelRef, ticketId?: string) => {
   const message = { id, channel, text: id, kind: 'reply' as const, ...ticketId ? { ticketId } : {} }
   store.receipts.add(message)
@@ -36,88 +35,88 @@ const drop = (id: string, channel: ChannelRef, ticketId?: string) => {
 }
 
 it('names the Thread of each dropped message: the one of the Trigger its Channel answers, or the Channel\'s own', () => {
-  // A Feishu Channel names its chat; the message it answers belongs to the Thread of the topic's root message.
-  store.triggers.save({ id: feishuTriggerId('om_reply'), source: 'feishu', threads: [{ source: 'feishu', id: 'oc_1:om_root' }],
-    actor: { source: 'feishu', id: 'ou_a' }, human: true, at: new Date().toISOString(), text: 'please', meta: {} })
+  // A Mattermost Channel names its channel; the message it answers belongs to the Thread of the topic's root message.
+  store.triggers.save({ id: mattermostTriggerId('preply00000000000000000000'), source: 'mattermost', threads: [{ source: 'mattermost', id: 'oc_1:om_root' }],
+    actor: { source: 'mattermost', id: 'ua000000000000000000000000' }, human: true, at: new Date().toISOString(), text: 'please', meta: {} })
   store.threads.save({ key: 'github:42', ref: { source: 'github', id: '42' }, createdAt: '', subscriptions: [], correlated: [], pending: [],
     meta: {} })
-  drop('a', feishuChannel('oc_1', 'om_reply'))
+  drop('a', mattermostChannel('c1000000000000000000000000', 'preply00000000000000000000'))
   drop('b', githubChannel(42))
   // A message whose Trigger and Thread the store no longer has links nowhere.
-  drop('c', feishuChannel('oc_2', 'om_gone'))
+  drop('c', mattermostChannel('c2000000000000000000000000', 'pgone000000000000000000000'))
   expect(Object.fromEntries(droppedReplies({ store, links }).map(item => [item.id, item.thread])))
-    .toEqual({ a: 'feishu:oc_1:om_root', b: 'github:42', c: undefined })
+    .toEqual({ a: 'mattermost:oc_1:om_root', b: 'github:42', c: undefined })
 })
 
 function views() {
-  store.saveSettings(SettingsSchema.parse({ policy: { sources: { feishu: { allowed: [{ id: 'ou_alice', name: 'Alice' }] },
+  store.saveSettings(SettingsSchema.parse({ policy: { sources: { mattermost: { allowed: [{ id: 'ualice00000000000000000000', name: 'Alice' }] },
     github: { allowed: [{ id: 'alice' }] } },
     rules: [{ id: 'copy', name: 'Copy fixes', enabled: true, instruction: 'Fix copy' }] } }))
   const sources = new SourceRegistry(() => store.settings())
-  sources.register(feishuKind); sources.register(githubKind)
+  sources.register(mattermostKind); sources.register(githubKind)
   return { store, sources, links }
 }
 const at = new Date().toISOString()
 /** A live ticket with no Assignment, as a follow-up's owner needs one. */
 const live = (id: string) => store.tickets.save({ id, title: id, decisionId: 'd', channels: [], undelivered: [], createdAt: at,
   updatedAt: at,
-  mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'feishu', id: 'ou_alice' }, scope: '' },
+  mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'mattermost', id: 'ualice00000000000000000000' }, scope: '' },
   origin: { triggerId: 'e0', triggerIds: ['e0'] }, assignments: [], inputs: [] })
 const message = (id: string, actor: { source: string; id: string }, human = true) => ({ id, source: actor.source,
-  threads: [{ source: 'feishu', id: 'oc_1:om_root' }], actor, human, at, text: `message ${id}`, meta: {} })
+  threads: [{ source: 'mattermost', id: 'oc_1:om_root' }], actor, human, at, text: `message ${id}`, meta: {} })
 
 it('names each sender as the Policy lists it, by its id where the id is readable, and as its kind names one it does not list', () => {
   const view = snapshot(views())
-  expect([view.actor({ source: 'feishu', id: 'OU_ALICE' }), view.actor({ source: 'github', id: 'alice' }), view.actor({ source: 'github',
+  expect([view.actor({ source: 'mattermost', id: 'OU_ALICE' }), view.actor({ source: 'github', id: 'alice' }), view.actor({ source: 'github',
     id: 'bob' }),
-    view.actor({ source: 'feishu', id: 'ou_bob' }), view.actor({ source: 'feishu', id: 'ou_bot' }, false), view.actor({ source: 'feishu',
+    view.actor({ source: 'mattermost', id: 'ubob0000000000000000000000' }), view.actor({ source: 'mattermost', id: 'ubot0000000000000000000000' }, false), view.actor({ source: 'mattermost',
       id: '' })])
-    .toEqual([{ source: 'feishu', id: 'OU_ALICE', name: { zh: 'Alice', en: 'Alice' } }, { source: 'github', id: 'alice',
-      name: { zh: 'alice', en: 'alice' } },
-      { source: 'github', id: 'bob', name: { zh: 'bob', en: 'bob' } }, { source: 'feishu', id: 'ou_bob',
-        name: feishuKind.policy!.unnamed!.person },
-      { source: 'feishu', id: 'ou_bot', name: feishuKind.policy!.unnamed!.bot }, { source: 'feishu', id: '' }])
+    .toEqual([{ source: 'mattermost', id: 'OU_ALICE', name: mattermostKind.policy!.unnamed!.person }, { source: 'github', id: 'alice',
+      name: { zh: 'alice', en: 'alice', ru: 'alice' } },
+      { source: 'github', id: 'bob', name: { zh: 'bob', en: 'bob', ru: 'bob' } }, { source: 'mattermost', id: 'ubob0000000000000000000000',
+        name: mattermostKind.policy!.unnamed!.person },
+      { source: 'mattermost', id: 'ubot0000000000000000000000', name: mattermostKind.policy!.unnamed!.bot }, { source: 'mattermost', id: '' }])
   expect(view.rule('copy')).toEqual({ id: 'copy', name: 'Copy fixes' })
   expect(view.rule('gone')).toEqual({ id: 'gone', name: 'gone' })
 })
 
 it('classifies a Thread by what it is doing, and offers a filtered Trigger of a person to Eval again', () => {
   const host = views()
-  store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: [],
+  store.threads.save({ key: 'mattermost:oc_1:om_root', ref: { source: 'mattermost', id: 'oc_1:om_root' }, createdAt: at, subscriptions: [],
     correlated: [],
     pending: ['e2'], meta: {} })
-  store.triggers.save(message('e1', { source: 'feishu', id: 'ou_alice' }))
-  store.triggers.save(message('e2', { source: 'feishu', id: 'ou_bob' }))
-  store.triggers.save(message('e3', { source: 'feishu', id: 'ou_bot' }, false))
+  store.triggers.save(message('e1', { source: 'mattermost', id: 'ualice00000000000000000000' }))
+  store.triggers.save(message('e2', { source: 'mattermost', id: 'ubob0000000000000000000000' }))
+  store.triggers.save(message('e3', { source: 'mattermost', id: 'ubot0000000000000000000000' }, false))
   for (const id of ['e1', 'e3']) store.triggers.saveDisposition(id, { filtered: { code: 'not_a_member' }, fanout: [], at })
   const view = snapshot(host)
-  expect(threadSummary(view, store.threads.get('feishu:oc_1:om_root')!).stage).toBe('queued')
+  expect(threadSummary(view, store.threads.get('mattermost:oc_1:om_root')!).stage).toBe('queued')
   const rows = ['e1', 'e2', 'e3'].map(id => triggerView(view, store.triggers.get(id)!))
   // A queued Trigger waits for Eval already, and an automated one is not offered.
   expect(rows.map(row => row.actions.requeue)).toEqual([true, false, false])
-  expect(rows[0]!.actor.name).toEqual({ zh: 'Alice', en: 'Alice' })
+  expect(rows[0]!.actor.name).toEqual({ zh: 'Alice', en: 'Alice', ru: 'Alice' })
 })
 
 it('states each Source by the first state that holds', () => {
   const host = views()
   const states = (setup: Parameters<typeof sourcesStatus>[2], health: Parameters<typeof sourcesStatus>[1] = {}) =>
     Object.fromEntries(sourcesStatus(host, health, setup).map(source => [source.id, source.state]))
-  expect(states({})).toEqual({ feishu: 'starting', github: 'starting' })
-  expect(states({}, { feishu: { state: 'ready', detail: '' }, history: { state: 'paused', detail: '' }, github: { state: 'error',
+  expect(states({})).toEqual({ mattermost: 'starting', github: 'starting' })
+  expect(states({}, { mattermost: { state: 'ready', detail: '' }, history: { state: 'paused', detail: '' }, github: { state: 'error',
     detail: 'x' } }))
-    .toEqual({ feishu: 'paused', github: 'error' })
+    .toEqual({ mattermost: 'paused', github: 'error' })
   const problem = { place: 'deployment', code: 'stateDirUnset', values: {}, detail: '' } as never
-  expect(states({ problem }, { feishu: { state: 'ready', detail: '' }, history: { state: 'ready', detail: '' }, github: { state: 'ready',
+  expect(states({ problem }, { mattermost: { state: 'ready', detail: '' }, history: { state: 'ready', detail: '' }, github: { state: 'ready',
     detail: '' } }))
-    .toEqual({ feishu: 'setup', github: 'setup' })
+    .toEqual({ mattermost: 'setup', github: 'setup' })
 })
 
 it('follows the Ticket\'s stage: a blocked Ticket a person answered since is working, with no retry, note or turn end', () => {
   const host = views()
   const blocked = { state: 'blocked' as const, summary: 'Needs the design file', at: '2026-09-22T00:01:00Z' }
   const ticket = { id: 't1', title: 'Fix', decisionId: 'd', channels: [], undelivered: [], createdAt: at, updatedAt: at,
-    mandate: { strength: 'explicit' as const, policyVersion: 'v', basis: { via: 'listed' as const }, actor: { source: 'feishu',
-      id: 'ou_alice' }, scope: '' },
+    mandate: { strength: 'explicit' as const, policyVersion: 'v', basis: { via: 'listed' as const }, actor: { source: 'mattermost',
+      id: 'ualice00000000000000000000' }, scope: '' },
     origin: { triggerId: 'e1', triggerIds: ['e1'] }, assignments: [{ id: 'a1', state: 'running' as const, createdAt: at, startedAt: at,
       report: blocked }],
     inputs: [] as { id: string; kind: 'trigger'; triggerId: string; at: string; human?: true }[] }
@@ -136,19 +135,19 @@ it('follows the Ticket\'s stage: a blocked Ticket a person answered since is wor
 it('does not show a follow-up that reached a ticket as waiting for an Eval, though an older version queued it', () => {
   const host = views()
   live('t1')
-  store.triggers.save(message('f1', { source: 'feishu', id: 'ou_alice' }))
+  store.triggers.save(message('f1', { source: 'mattermost', id: 'ualice00000000000000000000' }))
   store.triggers.saveDisposition('f1', { fanout: ['t1'], at })
-  store.triggers.save(message('f2', { source: 'feishu', id: 'ou_bob' }))
+  store.triggers.save(message('f2', { source: 'mattermost', id: 'ubob0000000000000000000000' }))
   store.triggers.saveDisposition('f2', { fanout: ['t1'], requeued: true, at })
-  store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
+  store.threads.save({ key: 'mattermost:oc_1:om_root', ref: { source: 'mattermost', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
     correlated: [],
     pending: ['f1'], meta: {} })
   const view = snapshot(host)
-  expect(threadSummary(view, store.threads.get('feishu:oc_1:om_root')!)).toMatchObject({ stage: 'subscribed', pending: 0 })
+  expect(threadSummary(view, store.threads.get('mattermost:oc_1:om_root')!)).toMatchObject({ stage: 'subscribed', pending: 0 })
   expect(triggerView(view, store.triggers.get('f1')!).disposition.queued).toBe(false)
   // One a person sent to Eval again waits for it.
-  store.threads.save({ ...store.threads.get('feishu:oc_1:om_root')!, pending: ['f1', 'f2'] })
-  expect(threadSummary(snapshot(host), store.threads.get('feishu:oc_1:om_root')!)).toMatchObject({ stage: 'queued', pending: 1 })
+  store.threads.save({ ...store.threads.get('mattermost:oc_1:om_root')!, pending: ['f1', 'f2'] })
+  expect(threadSummary(snapshot(host), store.threads.get('mattermost:oc_1:om_root')!)).toMatchObject({ stage: 'queued', pending: 1 })
 })
 
 const load = { running: 0, queued: 0 }
@@ -164,26 +163,26 @@ it('lists an Eval past its deadline, and as dsh-superagent\'s own errors only pa
   store.threads.save({ key: 'github:1', ref: { source: 'github', id: '1' }, createdAt: at, subscriptions: [], correlated: [], pending: [],
     evaluating, meta: {} })
   const error = (detail: string) => ({ state: 'error' as const, detail })
-  const health = { relay: error('relay failing'), reply: error('reply failing'), feishu: error('socket closed'),
+  const health = { relay: error('relay failing'), reply: error('reply failing'), mattermost: error('socket closed'),
     history: error('read failed'),
-    'sync:feishu': error('sync failed'), evals: error('unavailable'), launch: { state: 'ready' as const, detail: '' } }
+    'sync:mattermost': error('sync failed'), evals: error('unavailable'), launch: { state: 'ready' as const, detail: '' } }
   const found = problems(host, health)
   expect(found).toContainEqual({ kind: 'eval-overdue', thread: expect.objectContaining({ key: 'github:1', stage: 'evaluating' }) })
   // Effects are dsh-superagent's own; a Source shows its parts and its Policy sync, and the Evals are listed one by one.
   expect(found.filter(item => item.kind === 'runtime-error')).toEqual([{ kind: 'runtime-error', name: 'relay', detail: 'relay failing' },
     { kind: 'runtime-error', name: 'reply', detail: 'reply failing' }])
-  expect(found.filter(item => item.kind === 'source-error').map(item => item.source.health.name)).toEqual(['feishu', 'history'])
+  expect(found.filter(item => item.kind === 'source-error').map(item => item.source.health.name)).toEqual(['mattermost', 'history'])
 })
 
 it('says no Source runs when every Source is off, and states a Source missing or off', () => {
   const host = views()
   expect(problems(host).map(item => item.kind)).not.toContain('no-source')
   const settings = store.settings()
-  store.saveSettings({ ...settings, sources: { feishu: { enabled: false, config: {} }, github: { enabled: false, config: {} },
+  store.saveSettings({ ...settings, sources: { mattermost: { enabled: false, config: {} }, github: { enabled: false, config: {} },
     jira: { enabled: true, config: { site: 'acme' } } } })
   expect(problems(host).map(item => item.kind)).toContain('no-source')
   expect(Object.fromEntries(sourcesStatus(host, {}, {}).map(source => [source.id, [source.state, source.installed]])))
-    .toEqual({ feishu: ['off', true], github: ['off', true], jira: ['missing', false] })
+    .toEqual({ mattermost: ['off', true], github: ['off', true], jira: ['missing', false] })
 })
 
 it('sends text without HTML, entity-encoded tags included, and with images named', () => {
@@ -197,23 +196,23 @@ it('words each settings save by what it changed from the one before, and nothing
   const host = views()
   const first = store.settings()
   const allowed = (entries: { id: string; name?: string }[]) => ({ ...first.policy, sources: { ...first.policy.sources,
-    feishu: { ...first.policy.sources.feishu!, allowed: entries } } })
-  const alice = { id: 'ou_alice', name: 'Alice Liu' }, bob = { id: 'ou_bob', name: 'Bob' }
-  store.saveSettings({ ...first, policy: allowed([alice, bob, { id: 'ou_carol' }]), paused: true,
-    sources: { ...first.sources, feishu: { enabled: false, config: {} } },
+    mattermost: { ...first.policy.sources.mattermost!, allowed: entries } } })
+  const alice = { id: 'ualice00000000000000000000', name: 'Alice Liu' }, bob = { id: 'ubob0000000000000000000000', name: 'Bob' }
+  store.saveSettings({ ...first, policy: allowed([alice, bob, { id: 'ucarol00000000000000000000' }]), paused: true,
+    sources: { ...first.sources, mattermost: { enabled: false, config: {} } },
     executor: { ...first.executor, directory: '/srv/work', prepare: 'npm ci', blockedCommands: ['rm', 'curl'] } })
   const second = store.settings()
-  store.saveSettings({ ...second, policy: allowed([alice, { id: 'ou_carol' }]), paused: false, sources: { ...second.sources,
-    feishu: { enabled: true, config: {} } } })
+  store.saveSettings({ ...second, policy: allowed([alice, { id: 'ucarol00000000000000000000' }]), paused: false, sources: { ...second.sources,
+    mattermost: { enabled: true, config: {} } } })
   const changes = (revision: number) => policyHistory(store, host.sources, 'v').items.find(item => item.revision === revision)!.changes
   const revision = store.get(KV.settings.revision)!
   expect(changes(revision - 1)).toEqual([
-    { code: 'sourceRowsAdded', source: 'feishu', part: true, field: 'allowed', items: ['Bob', 'ou_carol'] },
-    { code: 'sourceRowsChanged', source: 'feishu', part: true, field: 'allowed', items: ['Alice Liu'] },
+    { code: 'sourceRowsAdded', source: 'mattermost', part: true, field: 'allowed', items: ['Bob', 'ucarol00000000000000000000'] },
+    { code: 'sourceRowsChanged', source: 'mattermost', part: true, field: 'allowed', items: ['Alice Liu'] },
     { code: 'paused' }, { code: 'executionDirectory', from: '', to: '/srv/work' }, { code: 'prepareCommand' },
-    { code: 'blockedCommands', from: '', to: 'rm curl' }, { code: 'sourceDisabled', source: 'feishu' }])
-  expect(changes(revision)).toEqual([{ code: 'sourceRowsRemoved', source: 'feishu', part: true, field: 'allowed', items: ['Bob'] },
-    { code: 'resumed' }, { code: 'sourceEnabled', source: 'feishu' }])
+    { code: 'blockedCommands', from: '', to: 'rm curl' }, { code: 'sourceDisabled', source: 'mattermost' }])
+  expect(changes(revision)).toEqual([{ code: 'sourceRowsRemoved', source: 'mattermost', part: true, field: 'allowed', items: ['Bob'] },
+    { code: 'resumed' }, { code: 'sourceEnabled', source: 'mattermost' }])
   // A save whose predecessor is missing from the history has nothing to compare with.
   store.delete(KV.settings.version(revision))
   store.saveSettings({ ...store.settings(), paused: true })
@@ -221,11 +220,11 @@ it('words each settings save by what it changed from the one before, and nothing
 })
 
 it('names a listed bot as the Policy lists it, and gives a bot\'s Mandate a basis fact of its own', () => {
-  store.saveSettings(SettingsSchema.parse({ policy: { sources: { feishu: { allowed: [], bots: [{ id: 'cli_review', name: '评审机器人' }] } } } }))
+  store.saveSettings(SettingsSchema.parse({ policy: { sources: { mattermost: { allowed: [], bots: [{ id: 'breview0000000000000000000', name: '评审机器人' }] } } } }))
   const sources = new SourceRegistry(() => store.settings())
-  sources.register(feishuKind)
+  sources.register(mattermostKind)
   const view = snapshot({ store, sources, links })
-  expect(view.actor({ source: 'feishu', id: 'cli_review' }, false).name).toEqual({ zh: '评审机器人', en: '评审机器人' })
+  expect(view.actor({ source: 'mattermost', id: 'breview0000000000000000000' }, false).name).toEqual({ zh: '评审机器人', en: '评审机器人', ru: '评审机器人' })
   expect(basisFacts({ via: 'bot', sender: '评审机器人', addressed: 'mention', observation: { mode: 'auto' } }, view.rule).facts)
     .toEqual([{ name: 'sender', value: '评审机器人' }, { name: 'bot' }, { name: 'addressed', value: 'mention' }, { name: 'mode', value: 'auto' }])
 })
@@ -233,12 +232,12 @@ it('names a listed bot as the Policy lists it, and gives a bot\'s Mandate a basi
 it('shows a follow-up that reached a ticket as delivered, the tickets that handed a Trigger back with why, and the Threads a ticket follows for context', () => {
   const host = views()
   live('t1')
-  store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
+  store.threads.save({ key: 'mattermost:oc_1:om_root', ref: { source: 'mattermost', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
     correlated: [],
     pending: [], meta: {} })
-  store.triggers.save(message('f1', { source: 'feishu', id: 'ou_alice' }))
+  store.triggers.save(message('f1', { source: 'mattermost', id: 'ualice00000000000000000000' }))
   store.triggers.saveDisposition('f1', { fanout: ['t1'], at })
-  store.triggers.save(message('f2', { source: 'feishu', id: 'ou_alice' }))
+  store.triggers.save(message('f2', { source: 'mattermost', id: 'ualice00000000000000000000' }))
   store.triggers.saveDisposition('f2', { fanout: ['t1'], requeued: true, handbacks: [{ ticketId: 't1', reason: 'Asks for a new feature', at }], at })
   const view = snapshot(host)
   expect(triggerView(view, store.triggers.get('f1')!).disposition).toMatchObject({ delivered: true, queued: false, handbacks: [] })
@@ -249,11 +248,11 @@ it('shows a follow-up that reached a ticket as delivered, the tickets that hande
     correlated: [], pending: [], meta: {} })
   expect(threadDetail(host, 'github:7', undefined, 50)?.context).toEqual(['t1'])
   store.tickets.save({ id: 't1', title: 'Fix', decisionId: 'd', channels: [], undelivered: [], createdAt: at, updatedAt: at,
-    mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'feishu', id: 'ou_alice' }, scope: '' },
+    mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'mattermost', id: 'ualice00000000000000000000' }, scope: '' },
     origin: { triggerId: 'e1', triggerIds: ['e1'] }, assignments: [],
     inputs: [{ id: 'i1', kind: 'trigger', triggerId: 'f1', at }, { id: 'i2', kind: 'trigger', triggerId: 'f2', at }] })
   const page = ticketDetail(host, 't1')!
-  expect(Object.fromEntries(page.threads.map(thread => [thread.key, !!thread.context]))).toEqual({ 'feishu:oc_1:om_root': false,
+  expect(Object.fromEntries(page.threads.map(thread => [thread.key, !!thread.context]))).toEqual({ 'mattermost:oc_1:om_root': false,
     'github:7': true })
   expect(page.inputs.map(input => input.kind === 'trigger' && input.trigger?.handback)).toEqual([{ reason: 'Asks for a new feature', at },
     undefined])
@@ -264,19 +263,19 @@ it('names a bot\'s Mandate as a bot once the Policy no longer lists it', () => {
   const host = views()
   const mandate = { strength: 'inferred' as const, policyVersion: 'v', basis: { via: 'bot' as const,
     observation: { mode: 'auto' as const } },
-    actor: { source: 'feishu', id: 'cli_removed' }, scope: '' }
+    actor: { source: 'mattermost', id: 'bremoved000000000000000000' }, scope: '' }
   store.tickets.save({ id: 't1', title: 'Fix', decisionId: 'd', channels: [], undelivered: [], createdAt: at, updatedAt: at, mandate,
     origin: { triggerId: 'e1', triggerIds: ['e1'] }, assignments: [], inputs: [] })
-  expect(ticketDetail(host, 't1')!.mandate.actor).toEqual({ source: 'feishu', id: 'cli_removed', name: feishuKind.policy!.unnamed!.bot })
+  expect(ticketDetail(host, 't1')!.mandate.actor).toEqual({ source: 'mattermost', id: 'bremoved000000000000000000', name: mattermostKind.policy!.unnamed!.bot })
 })
 
 it('offers a person to send a follow-up to Eval while a ticket decides it, or once nothing did', () => {
   const host = views()
   live('t1')
-  store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
+  store.threads.save({ key: 'mattermost:oc_1:om_root', ref: { source: 'mattermost', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
     correlated: [],
     pending: [], meta: {} })
-  store.triggers.save(message('f1', { source: 'feishu', id: 'ou_alice' }))
+  store.triggers.save(message('f1', { source: 'mattermost', id: 'ualice00000000000000000000' }))
   store.triggers.saveDisposition('f1', { fanout: ['t1'], at })
   const row = () => triggerView(snapshot(host), store.triggers.get('f1')!)
   expect(row()).toMatchObject({ actions: { requeue: true }, disposition: { delivered: true } })
@@ -286,7 +285,7 @@ it('offers a person to send a follow-up to Eval while a ticket decides it, or on
   // Not once its worker acknowledged it, which took it up; a stop on it decided only the ticket's work.
   store.triggers.saveDisposition('f1', { fanout: ['t1'], acked: ['t1'], at })
   expect(row().actions.requeue).toBe(false)
-  store.decisions.save({ id: 'stop', evalId: 'e', threadKey: 'feishu:oc_1:om_root', triggerIds: ['f1'], policyVersion: 'v', at, kind: 'stop',
+  store.decisions.save({ id: 'stop', evalId: 'e', threadKey: 'mattermost:oc_1:om_root', triggerIds: ['f1'], policyVersion: 'v', at, kind: 'stop',
     reason: [{ code: 'humanStop' }], strength: 'explicit', ticketId: 't1' })
   store.triggers.saveDisposition('f1', { fanout: ['t1'], decisionId: 'stop', at })
   expect(row().actions.requeue).toBe(true)
@@ -294,7 +293,7 @@ it('offers a person to send a follow-up to Eval while a ticket decides it, or on
   store.triggers.saveDisposition('f1', { fanout: [], decisionId: 'stop', at })
   expect(row().actions.requeue).toBe(true)
   // Once sent, it waits for the Eval.
-  store.threads.save({ ...store.threads.get('feishu:oc_1:om_root')!, pending: ['f1'] })
+  store.threads.save({ ...store.threads.get('mattermost:oc_1:om_root')!, pending: ['f1'] })
   store.triggers.saveDisposition('f1', { fanout: ['t1'], requeued: true, at })
   expect(row()).toMatchObject({ actions: { requeue: false }, disposition: { queued: true } })
 })
@@ -302,10 +301,10 @@ it('offers a person to send a follow-up to Eval while a ticket decides it, or on
 it('reads each ticket a page\'s follow-ups reached once, and nothing for a message no ticket can decide', () => {
   const host = views()
   live('t1')
-  store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
+  store.threads.save({ key: 'mattermost:oc_1:om_root', ref: { source: 'mattermost', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
     correlated: [], pending: [], meta: {} })
   for (const id of ['f1', 'f2', 'f3']) {
-    store.triggers.save(message(id, { source: 'feishu', id: 'ou_alice' }))
+    store.triggers.save(message(id, { source: 'mattermost', id: 'ualice00000000000000000000' }))
     store.triggers.saveDisposition(id, { fanout: ['t1'], at })
   }
   const view = snapshot(host)

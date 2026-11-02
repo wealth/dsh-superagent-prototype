@@ -1,6 +1,6 @@
 /**
- * In-memory DSH host fixture (as in tests/runtime.spec.ts) running a configured Runtime with GitHub and Feishu sources,
- * allowed member Alice (`ou_alice`), listened chat `oc_team`, and `auto` eval mode. Stop it with `stop()`.
+ * In-memory DSH host fixture (as in tests/runtime.spec.ts) running a configured Runtime with GitHub and Mattermost sources,
+ * allowed member Alice, listened channel `CHAN`, and `auto` eval mode. Stop it with `stop()`.
  */
 import { Context } from '@deepseek-ai/cordis'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -11,21 +11,51 @@ import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { Runtime } from '../../src/app/runtime.ts'
 import { Store } from '../../src/app/store.ts'
 import { SettingsSchema } from '../../src/policy.ts'
-import { feishuKind, feishuTrigger } from '../../src/sources/feishu.ts'
+import { mattermostKind, mattermostTrigger } from '../../src/sources/mattermost.ts'
 import { githubKind } from '../../src/sources/github.ts'
 import { Commands } from '../../src/infra/commands.ts'
 import { credentialHelper, workerGitConfig } from '../../src/infra/environment.ts'
 import type { Trigger } from '../../src/core/index.ts'
 import { testMachine } from './deployment.ts'
 
-export const MEMBER = 'ou_alice'
-export const CHAT = 'oc_team'
+/** Posts the fake Mattermost server received through the bot, in order. */
+export const sentPosts: Record<string, unknown>[] = []
+/** While set, the fake Mattermost server refuses posts with an internal error. */
+export const failure = { posts: false }
+export const MEMBER = 'user0000000000000000000001'
+export const CHAT = 'chan0000000000000000000001'
+const BOT_ID = 'botuser0000000000000000001'
 
-/** Build a Feishu mention trigger from Alice in `oc_team`, using the digits in `id` as the timestamp offset in seconds. */
+/**
+ * Build a Mattermost mention trigger from Alice in `CHAN`, using the digits in `id` as the timestamp offset in seconds.
+ * The post is `post_<id>`; `overrides.meta` is merged into the trigger's meta, as the scope tests need.
+ */
+export function mattermost(id: string, text: string, overrides: { meta?: Record<string, unknown> } = {}): Trigger {
+  const create = Date.parse('2026-09-09T00:00:00Z') + Number(id.replace(/\D/g, '') || 0) * 1000
+  const trigger = mattermostTrigger({ id: `post_${id}`, channel_id: CHAT, user_id: MEMBER, message: text, create_at: create, root_id: '', delete_at: 0, type: '' },
+    BOT_ID, { name: 'team', direct: false }, false, true)!
+  return overrides.meta ? { ...trigger, meta: { ...trigger.meta, ...overrides.meta } } : trigger
+}
+
+/**
+ * Legacy alias: the tests now call this under its old Feishu name. It builds a Mattermost trigger from the same
+ * shape the Feishu helper took (`mentions`, `root_id`, `sender_id`, `sender_type`, `chat_id`, `create_time`).
+ */
 export function feishu(id: string, text: string, overrides: Record<string, unknown> = {}): Trigger {
-  const at = String(Date.parse('2026-09-09T00:00:00Z') + Number(id.replace(/\D/g, '') || 0) * 1000)
-  return feishuTrigger({ message_id: `om_${id}`, chat_id: CHAT, chat_type: 'group', sender_id: MEMBER, sender_type: 'user', content: text, create_time: at,
-    mentions: [{ id: 'ou_bot' }], ...overrides }, 'ou_bot', 'cli_bot')!
+  const mentions = (overrides.mentions ?? [{ id: BOT_ID }]) as { id?: string }[]
+  const mentioned = mentions.some(mention => mention.id === BOT_ID)
+  const rootRaw = overrides.root_id as string | undefined
+  const rootId = rootRaw ? `post_${rootRaw.replace(/\D/g, '')}` : undefined
+  const channelId = (overrides.chat_id as string | undefined) ?? CHAT
+  const sender = (overrides.sender_id as string | undefined) ?? MEMBER
+  const isBot = (overrides.sender_type as string | undefined) === 'bot'
+  const createRaw = overrides.create_time as string | number | undefined
+  const create = createRaw === undefined ? Date.parse('2026-09-09T00:00:00Z') + Number(id.replace(/\D/g, '') || 0) * 1000
+    : typeof createRaw === 'number' ? createRaw : Date.parse(createRaw)
+  const postId = `post_${id}`
+  const trigger = mattermostTrigger({ id: postId, channel_id: channelId, user_id: sender, message: text, create_at: create, root_id: rootId ?? '', delete_at: 0, type: '' },
+    BOT_ID, { name: 'team', direct: false }, isBot, mentioned)!
+  return { ...trigger, meta: { ...trigger.meta, ...(overrides.meta as Record<string, unknown> | undefined) } }
 }
 
 type RegisteredTool = { name: string; execute: (args: unknown, execution: { signal: AbortSignal }) => Promise<unknown> }
@@ -134,19 +164,29 @@ export function subagentRuntime(agents: Map<string, FakeAgent>) {
 /** @param seed - writes to the database before the Runtime opens it, such as records an earlier version stored. */
 export async function startRuntime(seed?: (store: Store) => void) {
   const directory = mkdtempSync(join(tmpdir(), 'orchestrator-host-'))
-  const AGENT = join(directory, 'agent-gh'), BOT = join(directory, 'lark-bot')
+  const AGENT = join(directory, 'agent-gh')
+  const MM_URL = 'https://mattermost.test'
   const repository = { default_branch: 'master', permissions: { push: true } }
   vi.spyOn(Commands.prototype, 'gh').mockImplementation(async args => args[1] === 'user' ? { login: 'agent-bot' } : repository)
-  vi.spyOn(Commands.prototype, 'lark').mockResolvedValue({ users: [{ member_id: MEMBER, name: 'Alice' }], has_more: false })
+  // Mattermost is reached over REST; the fake server knows the bot, the channel and its one member.
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const path = new URL(url).pathname
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (path === '/api/v4/posts' && init?.method === 'POST') {
+      if (failure.posts) return new Response('{"message":"internal error (2200)"}', { status: 500 })
+      sentPosts.push(JSON.parse(String(init.body))); return json({ id: `reply_${sentPosts.length}` })
+    }
+    if (path === '/api/v4/users/me') return json({ id: 'botuser0000000000000000001', username: 'dsh-bot', is_bot: true })
+    if (path === '/api/v4/users/ids') return json([{ id: MEMBER, username: 'alice' }])
+    if (path.startsWith('/api/v4/channels/') && path.endsWith('/members')) return json([{ user_id: MEMBER, delete_at: 0 }])
+    return new Response('{}', { status: 404 })
+  }))
   vi.spyOn(Commands.prototype, 'git').mockResolvedValue('')
   vi.spyOn(Commands.prototype, 'run').mockResolvedValue('{"ok":true,"data":{}}')
   const scoped = 'git config -z --show-scope --get-regexp ^(credential\\..*|http\\..*extraheader)$'
   const answers: Record<string, string> = {
     [`${AGENT} api user`]: '{"login":"agent-bot","id":7}',
     [`${AGENT} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`]: '{"name":"acme/widgets","push":true}\n',
-    [`${BOT} auth status`]: JSON.stringify({ appId: 'cli_bot', brand: 'feishu', identities: { bot: { status: 'ready' } } }),
-    [`${BOT} config strict-mode`]: 'strict-mode: bot (source: profile)',
-    [`${BOT} api GET /open-apis/bot/v3/info --as bot --format ndjson`]: '{"bot":{"open_id":"ou_bot"},"code":0,"msg":"ok"}',
     ['git config -z --show-origin --get-all credential.https://github.com.helper']: `file:${workerGitConfig(directory)}\0${credentialHelper(AGENT)}\0`,
     [scoped]: `global\0credential.helper\n\0global\0credential.https://github.com.helper\n${credentialHelper(AGENT)}\0`,
   }
@@ -243,19 +283,19 @@ export async function startRuntime(seed?: (store: Store) => void) {
     jobs: jobs.service, subagents: subagents.service }
   const ctx = new Context()
   for (const [name, service] of Object.entries(services)) ctx.reflect.provide(name, service)
-  for (const cli of [AGENT, BOT]) writeFileSync(cli, '#!/bin/sh\n', { mode: 0o755 })
+  for (const cli of [AGENT]) writeFileSync(cli, '#!/bin/sh\n', { mode: 0o755 })
   const seeded = new Store(join(directory, 'orchestrator.sqlite'))
-  const sources = { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT } }, feishu: { enabled: true, config: { cli: BOT } } }
+  const sources = { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT } }, mattermost: { enabled: true, config: { url: MM_URL, token: 'test-token' } } }
   seeded.saveSettings(SettingsSchema.parse({ ...seeded.settings(), sources }))
   seed?.(seeded)
   seeded.close()
   const runtime = new Runtime(ctx, testMachine({ stateDir: directory }), vi.fn())
   await runtime.ready
-  runtime.sources.register(feishuKind); runtime.sources.register(githubKind)
+  runtime.sources.register(mattermostKind); runtime.sources.register(githubKind)
   const settings = runtime.store.settings()
   runtime.store.saveSettings({ ...settings, eval: { ...settings.eval, mode: 'auto' },
-    policy: { ...settings.policy, sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChat: CHAT }, github: { allowed: [{ id: 'alice' }] } } },
-    sources: { ...sources, feishu: { enabled: true, config: { cli: BOT, chats: [{ chatId: CHAT, listen: 'all' }], directMessages: true } } } })
+    policy: { ...settings.policy, sources: { mattermost: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChannel: CHAT }, github: { allowed: [{ id: 'alice' }] } } },
+    sources: { ...sources, mattermost: { enabled: true, config: { url: MM_URL, token: 'test-token', channels: [{ channelId: CHAT, listen: 'all' }], directMessages: true } } } })
   deliveries.mockClear()
 
   /** Parsed JSON payloads delivered to `sessionId`. */

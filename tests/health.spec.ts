@@ -1,7 +1,6 @@
 /** Runtime health reporting: per-component error states and recovery on subsequent success. */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { Commands } from '../src/infra/commands.ts'
-import { feishu, startRuntime, type Host } from './fixtures/host.ts'
+import { failure, mattermost, startRuntime, type Host } from './fixtures/host.ts'
 
 let h: Host
 beforeEach(async () => { h = await startRuntime() })
@@ -29,19 +28,18 @@ it('reports a relay in error once it failed three times, clears it once the rela
 
 it('keeps a failing relay\'s error while replies recover, and a failing reply\'s error while relays recover', async () => {
   const master = h.agents.get(h.runtime.masterId)!
-  const lark = vi.mocked(Commands.prototype.lark)
-  const reply = (id: string) => { h.runtime.outbox.send({ id, channel: feishu('9', 'x').channel!, text: '已合并。', kind: 'notice' }) }
+  const reply = (id: string) => { h.runtime.outbox.send({ id, channel: mattermost('9', 'x').channel!, text: '已合并。', kind: 'notice' }) }
   master.steer.mockImplementation(() => { throw new Error('master gone') })
   h.runtime.sessions.relay('r2', JSON.stringify({ kind: 'note' }))
-  lark.mockRejectedValue(new Error('internal error (2200)'))
+  failure.posts = true
   reply('stuck')
   // Each fails three times in a row: the relay after 0, 2 and 6 seconds, the reply after 0, 5 and 15.
   await h.runtime.idle(); await at(5000); await at(15_000)
   expect(h.runtime.health).toMatchObject({ relay: { state: 'error' }, reply: { state: 'error', detail: expect.stringContaining('2200') } })
-  lark.mockResolvedValue({})
+  failure.posts = false
   await at(35_000)
   expect(h.runtime.health).toMatchObject({ relay: { state: 'error' }, reply: { state: 'ready' } })
-  lark.mockRejectedValue(new Error('internal error (2200)'))
+  failure.posts = true
   reply('stuck-2')
   master.steer.mockImplementation(() => {})
   await h.runtime.idle(); await at(50_000); await at(70_000)
@@ -58,5 +56,7 @@ it('reports a notice the main Session did not receive three times, until one rea
   await h.runtime.settings.pause(false, 'panel')
   expect(h.runtime.health).toMatchObject({ notice: { state: 'ready' }, runtime: { state: 'ready' } })
   // The waiting pause notice was updated in place by the resume value and injected once.
-  expect(inject).toHaveBeenCalledOnce()
+  // The stand also saves its policy, which injects its own notice; only the pause notice is counted here.
+  const pauses = inject.mock.calls.map(([message]) => message).filter(message => String(message.id).includes(':settings:pause:'))
+  expect(pauses).toHaveLength(1)
 })

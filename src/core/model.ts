@@ -181,7 +181,7 @@ export interface Thread {
   meta: Record<string, unknown>
 }
 /** Text in both interface languages, or the same text in both. */
-export type Text = string | { zh: string; en: string }
+export type Text = string | { zh: string; en: string; ru: string }
 /** One fact a Source states about its thread, such as an issue number or a CI result; `problem` marks one that needs a person. */
 export interface ThreadFact { label?: Text; value: Text; problem?: true }
 /** A thread's facts by id, ordered for display; each writer owns its fact ids. */

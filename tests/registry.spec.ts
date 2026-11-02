@@ -8,9 +8,9 @@ import type { OutboundMessage } from '../src/core/index.ts'
 import { Commands } from '../src/infra/commands.ts'
 import { HealthBoard } from '../src/infra/health.ts'
 import { sourceContextOf, type SourceContextDeps } from '../src/app/source-context.ts'
-import { feishuChannel, feishuTrigger, feishuTriggerId } from '../src/sources/feishu-trigger.ts'
+import { mattermostChannel, mattermostTrigger, mattermostTriggerId } from '../src/sources/mattermost.ts'
 import { testDeployment } from './fixtures/deployment.ts'
-import { feishuKind } from '../src/sources/feishu.ts'
+import { mattermostKind } from '../src/sources/mattermost.ts'
 import { githubKind } from '../src/sources/github.ts'
 
 const probe: SourceKind<{ interval: number }> = {
@@ -58,7 +58,7 @@ describe('Source registry', () => {
     // A kind that is not installed keeps its replies waiting; links to it have no page.
     expect(await sources.send(message('retired'), commands)).toBe('waiting')
     expect(sources.link(message('probe').channel, {})).toEqual({ url: 'https://probe/r', label: { zh: '探针', en: 'Probe' } })
-    expect(sources.link(message('retired').channel, {})).toEqual({ url: '', label: { zh: 'retired', en: 'retired' } })
+    expect(sources.link(message('retired').channel, {})).toEqual({ url: '', label: { zh: 'retired', en: 'retired', ru: 'retired' } })
     const trigger = { id: 't1', source: 'probe', threads: [{ source: 'probe', id: '1' }], actor: { source: 'probe', id: 'u' }, human: true,
       at: '', text: 'hi', meta: { id: 'm1' } }
     const context = sources.threadContext(trigger)!
@@ -100,21 +100,22 @@ describe('Source registry', () => {
   })
   it('names the Trigger whose message a Trigger\'s message answers, where its kind can', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
-    sources.register(feishuKind); sources.register(githubKind)
-    const reply = feishuTrigger({ message_id: 'om_2', chat_id: 'oc_1', chat_type: 'group', sender_id: 'ou_alice', sender_type: 'user',
-      content: 'yes', create_time: '1757376000000', parent_id: 'om_1' }, 'ou_bot', 'cli_bot')!
-    expect(sources.repliesTo(reply)).toBe(feishuTriggerId('om_1'))
-    expect(sources.repliesTo({ ...reply, meta: { ...reply.meta, parentId: undefined } })).toBeUndefined()
-    expect(sources.repliesTo({ ...reply, source: 'github' })).toBeUndefined()
+    sources.register(mattermostKind); sources.register(githubKind)
+    const post = (overrides: Record<string, unknown> = {}) => mattermostTrigger({ id: 'p2', channel_id: 'c1000000000000000000000000', user_id: 'u1000000000000000000000001',
+      message: 'yes', create_at: 1757376000000, root_id: 'p1', type: '', ...overrides }, 'u2000000000000000000000001', { name: 'team', direct: false }, false, true)!
+    expect(sources.repliesTo(post())).toBe(mattermostTriggerId('p1'))
+    expect(sources.repliesTo(post({ root_id: '' }))).toBeUndefined()
+    expect(sources.repliesTo({ ...post(), source: 'github' })).toBeUndefined()
   })
   it('finds what a search query names in each kind\'s terms', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
-    sources.register(feishuKind); sources.register(githubKind)
+    sources.register(mattermostKind); sources.register(githubKind)
     expect(sources.find('#12')).toEqual({ threads: ['github:12'], terms: [] })
     expect(sources.find('https://github.com/acme/widgets/pull/7#issuecomment-3')).toEqual({ threads: ['github:7'], terms: [] })
-    expect(sources.find('see om_abc and om_abc, om_def')).toEqual({ threads: [], terms: ['om_abc', 'om_def'] })
+    expect(sources.find('see p1000000000000000000000000 and p1000000000000000000000000, p2000000000000000000000000'))
+      .toEqual({ threads: [], terms: ['p1000000000000000000000000', 'p2000000000000000000000000'] })
     expect(sources.find('login fails')).toEqual({ threads: [], terms: [] })
-    expect(feishuKind.policy!.unnamed).toEqual({ person: { zh: '飞书用户', en: 'Feishu user' }, bot: { zh: '飞书机器人', en: 'Feishu bot' } })
+    expect(mattermostKind.policy!.unnamed).toEqual({ person: { zh: 'Mattermost 用户', en: 'Mattermost user', ru: 'Пользователь Mattermost' }, bot: { zh: 'Mattermost 机器人', en: 'Mattermost bot', ru: 'Бот Mattermost' } })
   })
   it('refuses a second registration of one kind and forgets a kind after its disposer runs', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
@@ -124,39 +125,43 @@ describe('Source registry', () => {
     expect(sources.instance('probe')).toBeUndefined()
   })
   it('validates each Source\'s part of the Policy with its kind, keeping parts of kinds that are not installed as stored', () => {
-    const sources = new SourceRegistry(() => SettingsSchema.parse({ policy: { sources: { feishu: { allowed: [{ id: 'ou_alice' }] } } } }))
-    sources.register(feishuKind); sources.register(githubKind)
-    expect(sources.validatePolicy({ feishu: { allowed: [{ id: 'ou_alice', name: 'Alice' }] }, retired: { allowed: [], x: 1 } }))
-      .toEqual({ feishu: { allowed: [{ id: 'ou_alice', name: 'Alice' }], syncChat: '', admission: {} }, retired: { allowed: [], x: 1 } })
-    expect(() => sources.validatePolicy({ feishu: { allowed: [{ id: 'alice' }] } })).toThrow()
-    expect(sources.policyPart('feishu')).toEqual({ allowed: [{ id: 'ou_alice' }], syncChat: '', admission: {} })
+    const sources = new SourceRegistry(() => SettingsSchema.parse({ policy: { sources: { mattermost: { allowed: [{ id: 'u1000000000000000000000001' }] } } } }))
+    sources.register(mattermostKind); sources.register(githubKind)
+    expect(sources.validatePolicy({ mattermost: { allowed: [{ id: 'u1000000000000000000000001', name: 'Alice' }] }, retired: { allowed: [], x: 1 } }))
+      .toEqual({ mattermost: { allowed: [{ id: 'u1000000000000000000000001', name: 'Alice' }], syncChannel: '', admission: {} }, retired: { allowed: [], x: 1 } })
+    expect(() => sources.validatePolicy({ mattermost: { allowed: [{ id: 'alice' }] } })).toThrow()
+    expect(sources.policyPart('mattermost')).toEqual({ allowed: [{ id: 'u1000000000000000000000001' }], syncChannel: '', admission: {} })
     expect(sources.policyPart('github')).toEqual({ allowed: [], admission: {} })
     sources.register(probe)
     expect(sources.policyPart('probe')).toBeUndefined()
   })
-  it('allows a reply only on a Channel whose Source still listens to its chat', () => {
-    const settings = SettingsSchema.parse({ sources: { feishu: { enabled: true, config: { chats: [{ chatId: 'oc_team', listen: 'mentions' }], directMessages: false } } } })
+  it('allows a reply only on a Channel whose Source still listens to its channel', () => {
+    const settings = SettingsSchema.parse({ sources: { mattermost: { enabled: true, config: { channels: [{ channelId: 'c1000000000000000000000000', listen: 'mentions' }], directMessages: false } } } })
     const sources = new SourceRegistry(() => settings)
-    expect(sources.channelAllowed({ source: 'feishu', address: { chatId: 'oc_team' } })).toBe(false)
-    sources.register(feishuKind); sources.register(githubKind)
-    expect(sources.channelAllowed({ source: 'feishu', address: { chatId: 'oc_team' } })).toBe(true)
-    expect(sources.channelAllowed({ source: 'feishu', address: { chatId: 'oc_other' } })).toBe(false)
-    // A direct chat's id starts with oc_ too; the address says it is direct, and with direct messages off it gets no reply.
-    expect(sources.channelAllowed(feishuChannel('oc_dm', 'om_1', true))).toBe(false)
+    expect(sources.channelAllowed({ source: 'mattermost', address: { channelId: 'c1000000000000000000000000' } })).toBe(false)
+    sources.register(mattermostKind); sources.register(githubKind)
+    expect(sources.channelAllowed({ source: 'mattermost', address: { channelId: 'c1000000000000000000000000' } })).toBe(true)
+    expect(sources.channelAllowed({ source: 'mattermost', address: { channelId: 'c2000000000000000000000000' } })).toBe(false)
+    // A direct channel's address says it is direct, and with direct messages off it gets no reply.
+    expect(sources.channelAllowed(mattermostChannel('c1000000000000000000000000', 'p1', undefined, true))).toBe(false)
     expect(sources.channelAllowed({ source: 'github', address: { number: '7' } })).toBe(true)
   })
   it('delivers a reply to a direct message under the default settings', async () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
-    sources.register(feishuKind)
-    const trigger = feishuTrigger({ message_id: 'om_dm', chat_id: 'oc_dm', chat_type: 'p2p', sender_id: 'ou_alice', sender_type: 'user',
-      content: 'fix it', create_time: '1757376000000' }, 'ou_bot', 'cli_bot')!
+    sources.register(mattermostKind)
+    const trigger = mattermostTrigger({ id: 'pdm', channel_id: 'c1000000000000000000000000', user_id: 'u1000000000000000000000001',
+      message: 'fix it', create_at: 1757376000000, root_id: '', type: '' }, 'u2000000000000000000000001', { name: 'dm', direct: true }, false, true)!
     const channel = trigger.channel!
-    expect(channel.address).toEqual({ chatId: 'oc_dm', messageId: 'om_dm', direct: 'true' })
+    expect(channel.address).toEqual({ channelId: 'c1000000000000000000000000', postId: 'pdm', direct: 'true' })
     expect(sources.channelAllowed(channel)).toBe(true)
-    const commands = new Commands(() => testDeployment(), {}, new AbortController().signal)
-    const run = vi.spyOn(commands, 'run').mockResolvedValue('{"ok":true,"data":{}}')
+    const commands = new Commands(() => testDeployment({ mattermost: { url: 'https://mattermost.test', token: 'test-token', botId: 'u2000000000000000000000001', username: 'dsh-bot' } }), {}, new AbortController().signal)
+    const fetched = vi.fn(async () => new Response(JSON.stringify({ id: 'reply' }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetched)
     const reply: OutboundMessage = { id: 'reply-1', channel, text: 'Done', kind: 'reply' }
     expect(await sources.send(reply, commands)).toBe('sent')
-    expect(run.mock.calls[0]![1]).toEqual(expect.arrayContaining(['+messages-reply', '--message-id', 'om_dm']))
+    const [url, init] = fetched.mock.calls[0] ?? []
+    expect(url).toBe('https://mattermost.test/api/v4/posts')
+    expect(JSON.parse(String(init?.body))).toMatchObject({ channel_id: 'c1000000000000000000000000', message: 'Done' })
+    vi.unstubAllGlobals()
   })
 })

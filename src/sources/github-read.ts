@@ -39,9 +39,9 @@ export function ciFailures(snapshot: CiSnapshot): string[] {
     ...(snapshot.statuses ?? []).filter(status => FAILING.has(status.state)).map(status => status.context)].sort()
 }
 export function ciFact(counts: { failed: number; running: number }): ThreadFact {
-  if (counts.failed) return { label: { zh: 'CI 失败', en: 'CI failed' }, value: String(counts.failed), problem: true }
-  if (counts.running) return { label: { zh: 'CI 进行中', en: 'CI running' }, value: String(counts.running) }
-  return { label: 'CI', value: { zh: '通过', en: 'passed' } }
+  if (counts.failed) return { label: { zh: 'CI 失败', en: 'CI failed', ru: 'CI провален' }, value: String(counts.failed), problem: true }
+  if (counts.running) return { label: { zh: 'CI 进行中', en: 'CI running', ru: 'CI выполняется' }, value: String(counts.running) }
+  return { label: 'CI', value: { zh: '通过', en: 'passed', ru: 'пройден' } }
 }
 
 /** Reads a non-hidden file or directory listing from the repository's default branch via the GitHub API; hidden entries and `node_modules` are rejected. */

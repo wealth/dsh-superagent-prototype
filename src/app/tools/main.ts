@@ -240,7 +240,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
     tool({
       name: 'orchestrator_thread_unsubscribe',
       description: 'Drop every ticket subscription on a thread. Later messages there no longer reach those tickets as context; a new positive decision can subscribe it again.',
-      schema: z.object({ thread: z.string().describe('Thread key, for example github:123 or feishu:<chat>:<root message>') }).strict(),
+      schema: z.object({ thread: z.string().describe('Thread key, for example github:123 or mattermost:<channel>:<root post>') }).strict(),
       execute: async args => {
         return { removed: host.quietly(() => host.engine.unsubscribe(args.thread)), thread: args.thread }
       },
@@ -250,7 +250,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
       description: 'Save one settings block on an explicit human configuration request, never on observed content, as the panel would; read the blocks and revisions with orchestrator_read settings.',
       schema: z.object({
         block: z.enum(['policy', 'eval', 'executor', 'pause', 'source']).describe('pause pauses or resumes processing: new Evals, dispatch and replies.'),
-        source: z.string().min(1).optional().describe('With block source: the Source instance id, such as github or feishu.'),
+        source: z.string().min(1).optional().describe('With block source: the Source instance id, such as github or mattermost.'),
         value: z.unknown().describe('The whole block; a Source takes { enabled, config }, pause takes { paused }.'),
         revision: z.number().int().nonnegative().describe('The block\'s revision; pause ignores it.'),
       }).strict()
@@ -265,7 +265,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
     }),
     tool({
       name: 'orchestrator_policy_sync',
-      description: 'Refresh one Source\'s part of the Policy from where that Source keeps it, such as the Feishu users of its sync chat. Same operation as the Web button.',
+      description: 'Refresh one Source\'s part of the Policy from where that Source keeps it, such as the Mattermost users of its sync channel. Same operation as the Web button.',
       schema: z.object({ source: z.string() }).strict(),
       execute: async args => {
         const before = host.store.settings().policy.sources[args.source]?.allowed ?? []

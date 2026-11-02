@@ -30,7 +30,7 @@ export interface Machine {
 }
 const MOVED: Record<string, string> = {
   repository: 'on the GitHub Source', branchPrefix: 'in the prepare command of the Execution settings', github: 'on the GitHub Source',
-  feishu: 'on the Feishu Source', author: 'prompt text', repositoryPath: 'in the prepare command of the Execution settings',
+  author: 'prompt text', repositoryPath: 'in the prepare command of the Execution settings',
   worktreeRoot: 'the ticket directory of the Execution settings', blockedCommands: 'in the Execution settings',
 }
 
@@ -46,16 +46,19 @@ export const GithubAccountsSchema = z.object({
   repository: z.string().trim().regex(/^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?$/, 'owner/name').default(''),
   cli: z.string().trim().default(''),
 })
-export const FeishuBotSchema = z.object({ cli: z.string().trim().default('') })
+export const MattermostBotSchema = z.object({ url: z.string().trim().default(''), token: z.string().trim().default('') })
 /** Source configuration keys that affect deployment setup and trigger a restart when changed. */
-export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { github: Object.keys(GithubAccountsSchema.shape), feishu: Object.keys(FeishuBotSchema.shape) }
+export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { github: Object.keys(GithubAccountsSchema.shape), mattermost: Object.keys(MattermostBotSchema.shape) }
 
 export interface Deployment extends Machine {
   repository: string
   github: { cli: string; login: string; noreply: string }
-  feishu?: FeishuBot
+  mattermost?: MattermostBot
 }
-export interface FeishuBot { cli: string; appId: string; brand: 'feishu' | 'lark'; botId: string; name: string }
+/** A verified Mattermost bot: the server it talks to, and the account the bot posts as. */
+export interface MattermostBot { url: string; token: string; botId: string; username: string }
+/** The part of a Mattermost bot the panel may show: never the token. */
+export const mattermostPublic = (bot: MattermostBot): Omit<MattermostBot, 'token'> => ({ url: bot.url, botId: bot.botId, username: bot.username })
 
 /** Resolve a command name or absolute path to an executable file, ignoring the worker shim directory. */
 export function executable(name: string, path: string, exclude?: string): string {
@@ -104,28 +107,19 @@ export async function resolveDeployment(machine: Machine, github: unknown, probe
   if (access.push !== true) throw new SetupError('repositoryReadOnly', { account: agent.login, repository })
   return { ...machine, repository, github: { cli, login: agent.login, noreply: `${agent.id}+${agent.login}@users.noreply.github.com` } }
 }
-
-const AuthStatus = z.object({ appId: z.string().regex(/^cli_[A-Za-z0-9]+$/), brand: z.enum(['feishu', 'lark']).default('feishu'), identities: z.object({ bot: z.object({ status: z.string() }) }) })
-const BotInfo = z.object({ bot: z.object({ open_id: z.string().regex(/^ou_[A-Za-z0-9]+$/), app_name: z.string().default('') }) })
 /**
- * Verify that the configured Feishu CLI is authenticated as a bot and restricted to strict mode `bot`.
- * Workers invoke this CLI as `lark-cli`, so a CLI that also permits a user identity would let workers act as that user.
+ * Verifies the Mattermost bot token against the server and returns the bot account it belongs to.
+ * The token is stored in the Source configuration and used only by the Mattermost Source's own requests.
  */
-export async function resolveFeishuBot(machine: Machine, feishu: unknown, probe: Probe, path = process.env.PATH ?? ''): Promise<FeishuBot | undefined> {
-  const { cli: name } = FeishuBotSchema.parse(feishu ?? {})
-  if (!name) return undefined
-  const fail = (error: unknown): never => { throw error instanceof SetupError ? error : new SetupError('feishuCliFailed', { output: reason(error) }) }
-  let cli = ''
-  try { cli = executable(name, path, workerBin(machine.stateDir)) } catch (error) { fail(error) }
-  const run = (...args: string[]): Promise<string> => probe(['env', 'LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1', 'LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1', cli, ...args]).catch(fail)
-  const text = await run('auth', 'status')
-  const status = parsed(AuthStatus, text.slice(text.indexOf('{')))
-  if (!status) return fail(new SetupError('feishuNoApp'))
-  if (status.identities.bot.status !== 'ready') fail(new SetupError('feishuBotNotReady', { app: status.appId, status: status.identities.bot.status }))
-  const mode = /strict-mode:\s*(\w+)/.exec(await run('config', 'strict-mode'))?.[1]
-  if (mode !== 'bot') fail(new SetupError('feishuUserIdentity', { mode: mode ?? 'unknown' }))
-  // `--format json` unwraps only `data`, whereas this endpoint returns the payload under `bot`.
-  const info = parsed(BotInfo, (await run('api', 'GET', '/open-apis/bot/v3/info', '--as', 'bot', '--format', 'ndjson')).split('\n')[0] ?? '')
-  if (!info) return fail(new SetupError('feishuNoBot'))
-  return { cli, appId: status.appId, brand: status.brand, botId: info.bot.open_id, name: info.bot.app_name }
+export async function resolveMattermostBot(machine: Machine, mattermost: unknown, fetcher: typeof fetch = fetch): Promise<MattermostBot | undefined> {
+  const { url, token } = MattermostBotSchema.parse(mattermost ?? {})
+  if (!url || !token) return undefined
+  const base = url.replace(/\/+$/, '')
+  const fail = (error: unknown): never => { throw error instanceof SetupError ? error : new SetupError('mattermostUnreachable', { url: base, output: reason(error) }) }
+  const response = await fetcher(`${base}/api/v4/users/me`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) }).catch(fail)
+  if (response.status === 401 || response.status === 403) throw new SetupError('mattermostUnauthorized')
+  if (!response.ok) fail(new Error(`HTTP ${response.status}`))
+  const user = z.object({ id: z.string().regex(/^[a-z0-9]{26}$/), username: z.string(), is_bot: z.boolean().optional() }).safeParse(await response.json())
+  if (!user.success) throw new SetupError('mattermostNoBot')
+  return { url: base, token, botId: user.data.id, username: user.data.username }
 }

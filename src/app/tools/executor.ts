@@ -42,7 +42,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
       name: 'orchestrator_thread_unrelated',
       description: 'Stop following an attached thread that is not about this ticket, as the work section says; its own threads cannot be dropped.',
       schema: z.object({
-        thread: z.string().min(1).describe('The thread key, which trigger/<id> of one of its messages shows as thread, such as feishu:<chat>:<root> or github:<number>.'),
+        thread: z.string().min(1).describe('The thread key, which trigger/<id> of one of its messages shows as thread, such as mattermost:<channel>:<root> or github:<number>.'),
         reason: z.string().trim().min(1).max(300).describe('One sentence on why the thread is not about this ticket.'),
       }).strict(),
       execute: async args => { host.engine.markUnrelated(ticketId, args.thread, args.reason); return { removed: true, thread: args.thread } },

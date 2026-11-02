@@ -47,6 +47,6 @@ export function githubLink(address: Record<string, string>, links: ChannelLinks)
   const number = address.number ?? ''
   const review = !!links.repository && !!githubAddress(address.url ?? '', links.repository)?.discussion
   return { url: address.url ?? (links.repository ? githubPage(links.repository, Number(number)) : ''),
-    label: review ? { zh: `GitHub #${number} 的 review 讨论`, en: `Review discussion on GitHub #${number}` }
-      : { zh: `GitHub #${number}`, en: `GitHub #${number}` } }
+    label: review ? { zh: `GitHub #${number} 的 review 讨论`, en: `Review discussion on GitHub #${number}`, ru: `Обсуждение ревью на GitHub #${number}` }
+      : { zh: `GitHub #${number}`, en: `GitHub #${number}`, ru: `GitHub #${number}` } }
 }

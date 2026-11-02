@@ -2,9 +2,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { OutboundMessage } from '../src/core/index.ts'
-import { Commands } from '../src/infra/commands.ts'
 import type { SourceKind } from '../src/sources/kind.ts'
-import { feishu, startRuntime, type Host } from './fixtures/host.ts'
+import { mattermost, sentPosts, startRuntime, type Host } from './fixtures/host.ts'
 
 let h: Host
 beforeEach(async () => { h = await startRuntime() })
@@ -15,16 +14,15 @@ async function at(ms: number) {
 }
 
 it('holds every message while processing is paused, and sends it once processing resumes', async () => {
-  const lark = vi.mocked(Commands.prototype.lark)
   await h.runtime.settings.pause(true, 'panel')
-  lark.mockClear()
-  h.runtime.outbox.send({ id: 'held', channel: feishu('1', 'x').channel!, text: '已合并。', kind: 'notice' })
+  sentPosts.length = 0
+  h.runtime.outbox.send({ id: 'held', channel: mattermost('1', 'x').channel!, text: '已合并。', kind: 'notice' })
   await h.runtime.sendReplies()
-  expect([h.runtime.outbox.status('held'), lark.mock.calls.length]).toEqual(['pending', 0])
+  expect([h.runtime.outbox.status('held'), sentPosts.length]).toEqual(['pending', 0])
   await h.runtime.settings.pause(false, 'panel')
   await h.runtime.pump(); await h.runtime.sendReplies()
   expect(h.runtime.outbox.status('held')).toBe('sent')
-  expect(JSON.stringify(lark.mock.calls)).toContain('已合并。')
+  expect(JSON.stringify(sentPosts)).toContain('已合并。')
 })
 
 it('keeps a message for a Source that is not installed waiting, and sends it once the Source\'s kind registers', async () => {

@@ -6,7 +6,6 @@ import { basename } from 'node:path'
 import { z } from 'zod'
 import { isoTime, said, type AcceptMode, type AdmissionCell, type ChannelRef, type Decision, type Execution, type Follow, type MandateBasis,
   type Reason, type Thread, type Ticket, type TicketInput, type TriggerDisposition } from '../core/index.ts'
-import { feishuChatLink } from '../sources/feishu-channel.ts'
 import { POLL_HORIZON_MS } from '../sources/poll.ts'
 import { SettingsSchema, policyVersion, type SettingsOrigin } from '../policy.ts'
 import { autoMergeThreshold, teamDefaults } from './context.ts'
@@ -211,9 +210,10 @@ export function migrateSettings(value: unknown): unknown {
   for (const chatId of old.allowedChats ?? []) chats.set(chatId, 'mentions')
   // Observed chats were active only when admission was enabled.
   if (old.admission?.mode !== 'off') for (const chatId of old.admission?.chats ?? []) chats.set(chatId, 'all')
-  const feishu = { chats: [...chats].map(([chatId, listen]) => ({ chatId, listen })), directMessages: old.allowDirectMessages ?? true }
+  // The Feishu chats carry over as Mattermost channels by their position; the Source stays off until a server and token are set.
+  const mattermost = { channels: [...chats].map(([channelId, listen]) => ({ channelId, listen })), directMessages: old.allowDirectMessages ?? true }
   return withoutRemovedFields({
-    sources: { feishu: { enabled: true, config: feishu }, github: { enabled: true, config: { pollSeconds: old.pollSeconds ?? 60 } } },
+    sources: { mattermost: { enabled: false, config: mattermost }, github: { enabled: true, config: { pollSeconds: old.pollSeconds ?? 60 } } },
     policy: { ...(old.members ? { members: old.members } : {}), ...(old.admission?.rules ? { rules: old.admission.rules } : {}) },
     eval: { ...(old.admission?.mode ? { mode: old.admission.mode } : {}), ...(old.admission?.timeoutSeconds ? { timeoutSeconds: old.admission.timeoutSeconds } : {}),
       model: old.models?.orchestrator ?? null },
@@ -228,11 +228,12 @@ function withoutRemovedFields(value: Stored): Stored {
   const rules = Array.isArray(storedRules) ? storedRules.map((rule: unknown) => { if (!isObject(rule)) return rule; const { visual: _visual, ...fields } = rule; return fields })
     : storedRules
   const people = Array.isArray(members) ? members as Member[] : undefined
+  // Feishu open_ids are not Mattermost user IDs, so they never carry over as allowed senders; the people are left to be added by hand.
   const parts = people ? {
-    feishu: { allowed: people.filter(member => member.feishuId).map(member => ({ id: member.feishuId!, ...(member.name ? { name: member.name } : {}) })),
-      ...(memberChat ? { syncChat: memberChat } : {}) },
+    mattermost: { allowed: [] as { id: string; name?: string }[] },
     github: { allowed: people.filter(member => member.github).map(member => ({ id: member.github! })) },
   } : undefined
+  void memberChat
   // The GitHub Source no longer configures a dedicated merge account; auto-merge policy now lives in prompts.
   const withoutMerge = (id: string, config: unknown) => { if (id !== 'github' || !isObject(config)) return config; const { mergeCli: _mergeCli, ...fields } = config; return fields }
   const instances = sources ? Object.fromEntries(Object.entries(sources).map(([id, instance]) => {
@@ -526,12 +527,14 @@ function migrateSourceRecords(store: Store): void {
   githubCursors(store)
   assessmentTriggers(store)
 }
+/** Key prefixes of the Feishu Source's state in databases written before it was removed; only these upgrades read them. */
+const LEGACY_FEISHU = { chats: 'feishu-chats', history: 'feishu-history:', topics: 'feishu-history-threads:' } as const
 /** Convert legacy Feishu topic ID arrays into maps keyed by topic ID with the chat's last recovery timestamp. */
 function feishuTopics(store: Store): void {
-  for (const name of store.keys(KV.feishu.topics)) {
+  for (const name of store.keys(LEGACY_FEISHU.topics)) {
     const topics: unknown = store.get(name)
     if (!Array.isArray(topics)) continue
-    const seen = store.get(KV.feishu.history(name.slice(KV.feishu.topics.prefix.length))) ?? new Date().toISOString()
+    const seen = store.get(`${LEGACY_FEISHU.history}${name.slice(LEGACY_FEISHU.topics.length)}`) ?? new Date().toISOString()
     store.set(name, Object.fromEntries(topics.map(id => [String(id), seen])))
   }
 }
@@ -540,7 +543,7 @@ function feishuTopics(store: Store): void {
  * distinguish direct messages from group chats on their own.
  */
 function feishuDirectAddresses(store: Store): void {
-  const chats = store.get(KV.feishu.chats) ?? {}
+  const chats = store.get<Record<string, boolean>>(LEGACY_FEISHU.chats) ?? {}
   const direct = (channel: unknown): channel is ChannelRef => isObject(channel) && channel.source === 'feishu' && isObject(channel.address)
     && chats[String(channel.address.chatId)] === true && channel.address.direct === undefined
   const marked = (channel: ChannelRef): ChannelRef => direct(channel)
@@ -558,6 +561,9 @@ function feishuDirectAddresses(store: Store): void {
     if (ticket.channels.some(direct)) store.tickets.save({ ...ticket, channels: ticket.channels.map(marked) })
   }
 }
+/** Feishu chat link as older databases recorded it; only the upgrade below uses it. */
+const feishuChatLink = (brand: 'feishu' | 'lark', chatId: string): string =>
+  `https://applink.${brand === 'lark' ? 'larksuite.com' : 'feishu.cn'}/client/chat/open?openChatId=${encodeURIComponent(chatId)}`
 /** Backfill chat URLs onto Feishu threads created before threads stored their own URL, inferring the brand from existing trigger URLs. */
 function feishuThreadLinks(store: Store): void {
   const lark = store.db.prepare(`SELECT 1 FROM trigger WHERE value ->> '$.source' = 'feishu'
