@@ -1,10 +1,10 @@
-# 001 Domain model
+# 001 Модель предметной области
 
-This document names the concepts of dsh-superagent and the rules each one keeps. The code, the tools the agents call, the panel and the other documents use these terms and no others. Following [000 Philosophy](000-philosophy.md), the model holds only concepts the work needs, and a business need becomes an attribute of one of them.
+Этот документ называет концепции dsh-superagent и правила, которые каждая из них хранит. Код, инструменты, которые вызывают агенты, панель и другие документы используют эти термины и никакие другие. Следуя [000 Philosophy](000-philosophy.md), модель содержит только концепции, нужные для работы, а бизнес-потребность становится атрибутом одной из них.
 
-## Flow
+## Поток
 
-Work moves from Trigger to Eval to execution. A Source produces Triggers. A Trigger fans out as context to the Tickets subscribed to its Threads. A person's message that reached a Ticket this way stays with that Ticket; every other Trigger enters Eval, which decides whether it asks for new work. When Eval accepts, it creates a Ticket with a Mandate. An Assignment hands the Ticket to an Executor, and results go back to the Source through a Channel.
+Работа движется от Триггера к Оценке и к исполнению. Источник порождает Триггеры. Триггер раздаётся как контекст Тикетам, подписанным на его Треды. Сообщение человека, дошедшее до Тикета этим путём, остаётся с этим Тикетом; каждый другой Триггер попадает в Оценку, которая решает, запрашивает ли он новую работу. Когда Оценка принимает, она создаёт Тикет с Мандатом. Назначение передаёт Тикет Исполнителю, а результаты возвращаются в Источник через Канал.
 
 ```mermaid
 flowchart LR
@@ -18,91 +18,91 @@ flowchart LR
   K -->|Channel| S
 ```
 
-## Concepts
+## Концепции
 
-Source, Thread, Eval, Mandate and Subscription form the core domain; the rest supports them.
+Источник, Тред, Оценка, Мандат и Подписка образуют ядро домена; остальное их поддерживает.
 
-| Concept | Definition | Rules it keeps | Why it exists |
+| Концепция | Определение | Правила, которые она хранит | Зачем она существует |
 | --- | --- | --- | --- |
-| Source | A stream of events. A Source kind is a reusable implementation; a Source instance is one configuration of a kind: whether it runs and what it listens to | Holds its read position and its own bot identity. Defines what counts as an event, including conditions that only hold over time. Drops the bot's own messages and Triggers outside what it listens to before they enter the domain. Translates each Trigger into the Threads it belongs to and the Channel addresses to reply on | A restart must not replay events |
-| Trigger | One immutable event with the Source's own metadata, such as its actor | Belongs to one or more Threads. Accepting a Trigger twice creates one Ticket | The unit of audit and of idempotence |
-| Thread | Triggers in time order; the Source defines which Triggers form one Thread | At most one Eval runs on it at a time. It may have several Tickets. It holds its Subscriptions, the running Eval and its Decision history | Gives Eval a consistent view and its context |
-| Correlation | The relation between Threads that one Trigger belongs to | Adds context; never routes | Lets Eval follow related evidence |
-| Channel | The write side of a Thread; the Source defines its addresses | A Thread may have several Channels; a Ticket holds a set of them | Acknowledgements, replies, pull requests and resolved reviews are all writes |
-| Policy | The versioned assessment rules and each Source's part: who may originate work through that Source, in that Source's own identities, how the list is synchronized, and which bots may make candidates | The Policy version covers the rules, the accept mode and the Source parts. A change that bears on a live Ticket, such as a change to a rule it was accepted under, is delivered to its Assignment; it does not revoke Mandates. Identities on different Sources are never mapped to each other | When the rules change, a running Eval must be discarded |
-| Eval | The judgement on a batch of Triggers, in two layers: gate and assessment | Input: the Trigger batch, a Thread snapshot, every Ticket on the Thread including ended ones, and the current Policy. Output: a Decision. Holds no state | Decides whether new work starts, goes on or stops |
-| Mandate | What an accept grants: the Policy version, the scope, the strength, the matched rules, the sender's identity on that Source and how the Source received the Trigger | Immutable; wider scope means a new Ticket. A Ticket's end does not end it: only a person's stop withdraws it, and a Policy that no longer holds it revokes it. Revalidated against the current Policy before an ended Ticket resumes | States why the work may be done, and how far it may go |
-| Ticket | A unit of authorized work | Only Eval creates one. Refers to its Mandate; holds its Channels and Inputs. Goes open → ended, and back to open when a person's message on one of its Threads resumes it, unless a person stopped it. Defines its own state instead of following the Executor's | Owns the execution and its reports |
-| Assignment | The binding of a Ticket to one Executor instance | A Ticket has several over time. Goes pending → running → ended independently of the Ticket. Only its final report may end the Ticket on the Executor's side | The Executor is outside the domain, but who executes must be inside it |
-| Subscription | A many-to-many relation between Tickets and Threads, held by the Thread | A matching Trigger fans out to every live subscribed Ticket, with no check of who sent it; a person's message that reaches a Ticket this way takes no Eval. A Thread an Executor follows for context reaches its Ticket the same way, but lends it no authority and does not resume it. An ended Ticket keeps its Subscriptions, including that of a pull request that closed or merged: a person's message resumes it under the same Mandate, with no Eval or Decision; messages from bots and CI do not reach it, since its Executor reads its Threads again when it resumes. A Ticket a person stopped receives nothing. The main Session attaches a Thread to an existing Ticket only when its message points at that Ticket explicitly. A person can drop every Subscription on a Thread; an Executor can drop only its own Ticket's Subscription to a Thread it finds unrelated, except the Thread its Ticket started on and a Thread a Source made it follow, such as its pull request's | Later discussion reaches the Executor without anyone mentioning the agent again |
+| Источник | Поток событий. Вид Источника — это переиспользуемая реализация; экземпляр Источника — одна конфигурация вида: запущен ли он и что слушает | Хранит свою позицию чтения и собственную идентичность бота. Определяет, что считается событием, включая условия, которые выполняются только со временем. Отбрасывает собственные сообщения бота и Триггеры вне того, что он слушает, прежде чем они попадут в домен. Переводит каждый Триггер в Треды, к которым он относится, и в адреса Каналов для ответа | Перезапуск не должен воспроизводить события |
+| Триггер | Одно неизменяемое событие с собственными метаданными Источника, такими как его действующее лицо | Принадлежит одному или нескольким Тредам. Приём Триггера дважды создаёт один Тикет | Единица аудита и идемпотентности |
+| Тред | Триггеры в порядке по времени; Источник определяет, какие Триггеры образуют один Тред | На нём одновременно выполняется не более одной Оценки. У него может быть несколько Тикетов. Он хранит свои Подписки, выполняющуюся Оценку и историю своих Решений | Даёт Оценке согласованный взгляд и её контекст |
+| Корреляция | Отношение между Тредами, к которым относится один Триггер | Добавляет контекст; никогда не маршрутизирует | Позволяет Оценке следовать за связанными свидетельствами |
+| Канал | Сторона записи Треда; Источник определяет его адреса | У Треда может быть несколько Каналов; Тикет хранит их набор | Подтверждения, ответы, pull request и разрешённые ревью — всё это записи |
+| Политика | Версионированные правила оценки и часть каждого Источника: кто может инициировать работу через этот Источник, в собственных идентичностях этого Источника, как синхронизируется список и какие боты могут создавать кандидатов | Версия Политики охватывает правила, режим приёма и части Источников. Изменение, затрагивающее живой Тикет, например изменение правила, по которому он был принят, доставляется в его Назначение; оно не отзывает Мандаты. Идентичности на разных Источниках никогда не сопоставляются друг с другом | Когда правила меняются, выполняющаяся Оценка должна быть отброшена |
+| Оценка | Суждение о пакете Триггеров, в двух слоях: шлюз и анализ | Вход: пакет Триггеров, снимок Треда, каждый Тикет на Треде, включая завершённые, и текущая Политика. Выход: Решение. Не хранит состояние | Решает, начинается ли, продолжается ли или останавливается новая работа |
+| Мандат | Что даёт приём: версия Политики, область, сила, совпавшие правила, идентичность отправителя в этом Источнике и как Источник получил Триггер | Неизменяем; более широкая область означает новый Тикет. Завершение Тикета не завершает его: только остановка человеком отзывает его, а Политика, которая больше его не содержит, отменяет его. Перепроверяется против текущей Политики перед возобновлением завершённого Тикета | Указывает, почему работа может быть выполнена и как далеко она может зайти |
+| Тикет | Единица санкционированной работы | Только Оценка создаёт его. Ссылается на свой Мандат; хранит свои Каналы и Входы. Идёт open → ended и обратно к open, когда сообщение человека на одном из его Тредов возобновляет его, если человек его не остановил. Определяет собственное состояние, а не следует за состоянием Исполнителя | Владеет исполнением и его отчётами |
+| Назначение | Привязка Тикета к одному экземпляру Исполнителя | У Тикета их несколько со временем. Идёт pending → running → ended независимо от Тикета. Только его финальный отчёт может завершить Тикет со стороны Исполнителя | Исполнитель вне домена, но тот, кто исполняет, должен быть внутри него |
+| Подписка | Отношение многие-ко-многим между Тикетами и Тредами, хранимое Тредом | Совпавший Триггер раздаётся каждому живому подписанному Тикету без проверки того, кто его отправил; сообщение человека, дошедшее до Тикета этим путём, не проходит Оценку. Тред, за которым Исполнитель следит для контекста, достигает его Тикета тем же путём, но не даёт ему полномочий и не возобновляет его. Завершённый Тикет сохраняет свои Подписки, включая pull request, который закрылся или был смерджен: сообщение человека возобновляет его под тем же Мандатом, без Оценки или Решения; сообщения от ботов и CI не достигают его, поскольку его Исполнитель заново читает его Треды при возобновлении. Тикет, который человек остановил, не получает ничего. Главная Сессия прикрепляет Тред к существующему Тикету только тогда, когда его сообщение явно указывает на этот Тикет. Человек может удалить все Подписки на Треде; Исполнитель может удалить только Подписку собственного Тикета на Тред, который считает не относящимся к делу, кроме Треда, с которого начался его Тикет, и Треда, за которым Источник заставил его следить, например его pull request | Более позднее обсуждение достигает Исполнителя, и никому не нужно снова упоминать агента |
 
-A person is not a domain concept. A Trigger carries its actor's identifier as the Source gives it. An allowed list is a Source's part of the Policy, in that Source's identities. That one person has accounts on several Sources is prompt text that the agents read when they need it.
+Человек не является доменной концепцией. Триггер несёт идентификатор своего действующего лица так, как его даёт Источник. Список разрешённых — это часть Источника в Политике, в идентичностях этого Источника. То, что у одного человека есть аккаунты на нескольких Источниках, — это текст промпта, который агенты читают, когда это нужно.
 
-The Executor, with its Sessions and directories, is outside the domain and connects through Assignments.
+Исполнитель, со своими Сессиями и директориями, находится вне домена и соединяется через Назначения.
 
-Aggregates: a Source holds its read position. A Thread holds its Subscriptions, its running Eval, which runs serially and merges Triggers that arrive meanwhile into the next batch, and its Decision history. A Ticket holds its Assignments, Channels and Inputs, and refers to Decisions by id.
+Агрегаты: Источник хранит свою позицию чтения. Тред хранит свои Подписки, свою выполняющуюся Оценку, которая выполняется последовательно и сливает Триггеры, приходящие тем временем, в следующий пакет, и свою историю Решений. Тикет хранит свои Назначения, Каналы и Входы и ссылается на Решения по id.
 
-## Rejected concepts
+## Отклонённые концепции
 
-| Rejected | Reason |
+| Отклонено | Причина |
 | --- | --- |
-| Principal or Membership as an entity, or mapping identities across Sources | A person is Trigger metadata; an allowed list is a Source's part of the Policy; a cross-Source mapping is prompt text |
-| Eval scheduling its own delayed Triggers | A condition that needs waiting is an ordinary Source, so Eval never depends back on Sources |
-| Waiting or revoked Eval states | Waiting belongs to Sources; an Eval that runs out of time queues its Triggers again, or ends `unavailable` |
-| At most one live Ticket per Thread | One Thread can carry several independent pieces of work; the assessment avoids duplicates from the Ticket list |
-| An "append to Ticket" Decision | Appending is Subscription fan-out and needs no Eval |
-| Admission checks on Subscriptions | A Subscription covers the whole Thread; the Mandate separates authorization from context |
-| Correlation that routes | Subscriptions route; Correlation only adds context |
-| Ticket state that follows the DSH Session | A Ticket can be handed off, resumed, or run by several Executors, so it defines its own state |
-| An Executor declaring that a person asked it to stop | Only Eval decides the strength of an end |
-| Cancelling running Tickets on a Policy change | A cancelled change leaves half-finished work; the change is recorded and delivered instead |
-| Locking all of an Executor Session's tools when it fails or blocks | It would refuse a person working directly in the Session, and the report after recovery; pausing automatic input is enough |
-| Inferring "waiting on a person" from a report's free text | The classification needs structured facts; the Executor asks through a structured field |
+| Principal или Membership как сущность, или сопоставление идентичностей между Источниками | Человек — это метаданные Триггера; список разрешённых — часть Источника в Политике; меж-Источниковое сопоставление — текст промпта |
+| Оценка, планирующая свои собственные отложенные Триггеры | Условие, требующее ожидания, — это обычный Источник, поэтому Оценка никогда не зависит обратно от Источников |
+| Состояния Оценки waiting или revoked | Waiting принадлежит Источникам; Оценка, у которой вышло время, снова ставит свои Триггеры в очередь или завершается `unavailable` |
+| Не более одного живого Тикета на Тред | Один Тред может нести несколько независимых частей работы; анализ избегает дубликатов по списку Тикетов |
+| Решение «append to Ticket» | Добавление — это раздача Подписки и не требует Оценки |
+| Проверки Admission на Подписках | Подписка охватывает весь Тред; Мандат отделяет авторизацию от контекста |
+| Корреляция, которая маршрутизирует | Подписки маршрутизируют; Корреляция только добавляет контекст |
+| Состояние Тикета, следующее за DSH Session | Тикет может быть передан, возобновлён или выполнен несколькими Исполнителями, поэтому он определяет собственное состояние |
+| Исполнитель, заявляющий, что человек попросил его остановиться | Только Оценка решает силу завершения |
+| Отмена выполняющихся Тикетов при изменении Политики | Отменённое изменение оставляет наполовину готовую работу; изменение фиксируется и доставляется вместо этого |
+| Блокировка всех инструментов Сессии Исполнителя при сбое или блокировке | Это отказало бы человеку, работающему в Сессии напрямую, и отчёту после восстановления; достаточно приостановить автоматический вход |
+| Вывод «ждёт человека» из свободного текста отчёта | Классификация требует структурированных фактов; Исполнитель спрашивает через структурированное поле |
 
-## What is reusable
+## Что переиспользуемо
 
-The concepts above and their rules are reusable. The Source implementations, the Policy contents, the Executor and the Channel implementations belong to a deployment. Each Source keeps its own words internally, such as message, chat or notification, and translates them into Triggers.
+Концепции выше и их правила переиспользуемы. Реализации Источников, содержимое Политики, Исполнитель и реализации Каналов принадлежат развёртыванию. Каждый Источник хранит собственные слова внутри, такие как message, chat или notification, и переводит их в Триггеры.
 
-| Part | In this repository |
+| Часть | В этом репозитории |
 | --- | --- |
-| Source | Feishu: live events, history recovery, polling of subscribed topics. GitHub: notifications, subscribed Issues and pull requests, CI changes, pull requests merged or closed, and, where switched on, every new Issue, pull request and comment in the repository and the default branch's CI |
-| Policy | Assessment rules, and each Source's allowed list, its sync, its bot list and its admission table |
-| Executor | A DSH Executor Session and a directory per Ticket, in an execution environment whose variables the Executor and the Sources register |
-| Channel | Feishu topic replies, GitHub comments and review thread replies |
+| Источник | Feishu: живые события, восстановление истории, опрос подписанных тем. GitHub: уведомления, подписанные Issue и pull request, изменения CI, pull request смердженные или закрытые, и, где включено, каждый новый Issue, pull request и комментарий в репозитории и CI базовой ветки |
+| Политика | Правила оценки и список разрешённых каждого Источника, его синхронизация, его список ботов и его таблица приёма |
+| Исполнитель | DSH Executor Session и директория на Тикет, в среде исполнения, чьи переменные регистрируют Исполнитель и Источники |
+| Канал | Ответы в темы Feishu, комментарии GitHub и ответы в ветки ревью |
 
-## Glossary
+## Глоссарий
 
-A reference list of the terms this and the later documents use, with their Chinese names; the later documents explain the terms not introduced above. The panel shows one language at a time; its (?) button opens this glossary with both languages. The messages agents send to people on GitHub and Feishu use plain language, not these terms.
+Справочный список терминов, которые используют этот и последующие документы, с их китайскими названиями; последующие документы объясняют термины, не введённые выше. Панель показывает один язык за раз; её кнопка (?) открывает этот глоссарий с обоими языками. Сообщения, которые агенты отправляют людям на GitHub и в Feishu, используют повседневный язык, а не эти термины.
 
 | Term | 中文 | Meaning |
 | --- | --- | --- |
-| Agent | 智能体 | The automated team member dsh-superagent runs, acting on Sources through identities such as a GitHub account and a Feishu bot |
-| Main Session | 主 Session | The DSH Session that evaluates Triggers, accepts and dispatches Tickets, and replies; `orchestrator` in code and prompts |
-| Executor Session | 执行器 Session | The DSH Session an Executor runs for one Ticket; `worker` in code and prompts |
-| Source | 来源 | A stream of events: a kind that a plugin provides, plus one instance configuration |
-| Trigger | 触发 | One immutable event from a Source |
-| Thread | 线程 | Triggers in time order; the unit within which Evals run one at a time |
-| Correlation | 关联 | The relation between Threads that share a Trigger; it adds context only |
-| Channel | 渠道 | The write side of a Thread |
-| Policy | 策略 | The versioned rules for accepting work, and each Source's part of it, such as who may ask for work there |
-| Policy version | 策略版本 | The identifier of one combination of rules, Source parts and accept mode; every Mandate records it |
-| Eval | 评估 | The process that turns a batch of Triggers into a Decision |
-| Gate | 准入 | The deterministic first layer of Eval: who may originate work, and with what strength |
-| Assessment | 研判 | The model's judgement during Eval |
-| Decision | 决定 | The result of Eval |
-| Mandate | 授权 | What an accept grants: strength, scope and the Policy version it relied on |
-| Ticket | 工单 | A unit of authorized work |
-| Assignment | 派工 | The binding of a Ticket to one Executor instance |
-| Subscription | 订阅 | The relation between a Ticket and a Thread |
-| Fan-out | 扇出 | Delivering Triggers of a subscribed Thread to a Ticket as context |
-| Executor | 执行器 | The port that runs Assignments: one Executor Session and one directory per Ticket |
-| Execution environment | 执行环境 | Where Executor Sessions and the prepare command run: variables that the Executor and the Sources register, each with a key, a value and a description |
-| Report | 报告 | The state an Assignment reports to its Ticket |
-| Attention | 待人工决定 | A question on a Ticket that waits for a person's answer |
-| Disposition | 去向 | The record of a Trigger being filtered, evaluated or fanned out |
-| Input | 输入 | Context delivered to a Ticket: fanned-out Triggers, Policy changes, resumes and text |
-| Scope | 范围 | The work a Mandate allows |
-| Strength | 强度 | How strong the basis of a Mandate or an Eval is |
+| Agent | 智能体 | Автоматизированный член команды, которым управляет dsh-superagent, действующий на Источниках через идентичности, такие как аккаунт GitHub и бот Feishu |
+| Main Session | 主 Session | DSH Session, которая оценивает Триггеры, принимает и отправляет Тикеты и отвечает; `orchestrator` в коде и промптах |
+| Executor Session | 执行器 Session | DSH Session, которую Исполнитель запускает для одного Тикета; `worker` в коде и промптах |
+| Source | 来源 | Поток событий: вид, который предоставляет плагин, плюс одна конфигурация экземпляра |
+| Trigger | 触发 | Одно неизменяемое событие от Источника |
+| Thread | 线程 | Триггеры в порядке по времени; единица, внутри которой Оценки выполняются по одной за раз |
+| Correlation | 关联 | Отношение между Тредами, которые разделяют Триггер; только добавляет контекст |
+| Channel | 渠道 | Сторона записи Треда |
+| Policy | 策略 | Версионированные правила приёма работы и часть каждого Источника, например кто может запрашивать работу там |
+| Policy version | 策略版本 | Идентификатор одной комбинации правил, частей Источников и режима приёма; каждый Мандат фиксирует его |
+| Eval | 评估 | Процесс, который превращает пакет Триггеров в Решение |
+| Gate | 准入 | Детерминированный первый слой Оценки: кто может инициировать работу и с какой силой |
+| Assessment | 研判 | Суждение модели во время Оценки |
+| Decision | 决定 | Результат Оценки |
+| Mandate | 授权 | Что даёт приём: сила, область и версия Политики, на которую он опирался |
+| Ticket | 工单 | Единица санкционированной работы |
+| Assignment | 派工 | Привязка Тикета к одному экземпляру Исполнителя |
+| Subscription | 订阅 | Отношение между Тикетом и Тредом |
+| Fan-out | 扇出 | Доставка Триггеров подписанного Треда в Тикет как контекста |
+| Executor | 执行器 | Порт, который выполняет Назначения: одна Executor Session и одна директория на Тикет |
+| Execution environment | 执行环境 | Где выполняются Executor Sessions и команда prepare: переменные, которые регистрируют Исполнитель и Источники, каждая с ключом, значением и описанием |
+| Report | 报告 | Состояние, которое Назначение сообщает своему Тикету |
+| Attention | 待人工决定 | Вопрос к Тикету, который ждёт ответа человека |
+| Disposition | 去向 | Запись о том, как Триггер был отфильтрован, оценён или раздан |
+| Input | 输入 | Контекст, доставленный Тикету: розданные Триггеры, изменения Политики, возобновления и текст |
+| Scope | 范围 | Работа, которую позволяет Мандат |
+| Strength | 强度 | Насколько сильна основа Мандата или Оценки |
 
 | Group | Values |
 | --- | --- |

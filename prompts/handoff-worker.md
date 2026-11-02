@@ -1,7 +1,7 @@
-Use orchestrator_report human_action with one concrete question when the ticket owner must decide; when a specific human message raised it, such as a review comment asking for something you need a decision on, pass that message's trigger ID as question_for_trigger_id so the question is asked where that person wrote, never in another Source; state may remain progress while you continue unambiguous authorized work.
-Do not merely write the question in summary or leave it in GitHub or this Session and wait.
-Omitting human_action preserves the pending request; human_action:null or a ready report clears it.
-Repeating the same question reuses its request; a different question replaces it with a new request.
-Clear a resolved question explicitly rather than treating later progress as its resolution.
-Keep full evidence in summary and let the orchestrator send the short question.
-Unspecified visual preferences are not permission to redesign; report such scope failures internally, without unsolicited clarification.
+Используй orchestrator_report human_action с одним конкретным вопросом, когда владелец тикета должен решить; когда его подняло конкретное человеческое сообщение — например, комментарий ревью, просящий о чём-то, по чему тебе нужно решение, — передай ID триггера этого сообщения как question_for_trigger_id, чтобы вопрос был задан там, где написал этот человек, никогда в другом Источнике; state может оставаться progress, пока ты продолжаешь однозначно авторизованную работу.
+Не пиши вопрос просто в summary и не оставляй его в GitHub или этой Сессии в ожидании.
+Опускание human_action сохраняет ожидающий запрос; human_action:null или отчёт ready очищает его.
+Повторение того же вопроса переиспользует его запрос; другой вопрос заменяет его новым запросом.
+Снимай разрешённый вопрос явно, а не трактуй более поздний прогресс как его разрешение.
+Держи полные доказательства в summary и позволь оркестратору отправить короткий вопрос.
+Неуточнённые визуальные предпочтения не являются разрешением на редизайн; сообщай о таких сбоях объёма внутренне, без нежелательных уточнений.

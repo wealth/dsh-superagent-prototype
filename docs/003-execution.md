@@ -1,203 +1,203 @@
-# 003 Execution
+# 003 Исполнение
 
-This document follows an accepted Ticket through execution, delivery and recovery. It builds on [001 Domain model](001-domain.md) and [002 Authorization](002-authorization.md).
+Этот документ следует за принятым Тикетом через исполнение, доставку и восстановление. Он опирается на [001 Domain model](001-domain.md) и [002 Authorization](002-authorization.md).
 
-## Ticket stages
+## Стадии Тикета
 
-Each open Ticket has one stage, determined by what it is waiting for. Read the table from top to bottom; the first matching row wins.
+У каждого открытого Тикета есть одна стадия, определяемая тем, чего он ждёт. Читайте таблицу сверху вниз; побеждает первая совпавшая строка.
 
-| Stage | Condition | Panel label |
+| Стадия | Условие | Метка панели |
 | --- | --- | --- |
-| person / delivery | Delivering an Input to the Executor Session failed; it is retried after 2 seconds, then after a delay that doubles up to a minute, and a success, a new Assignment or the Ticket's end clears it | Input undelivered |
-| person / answer | It has an Attention | Awaiting answer |
-| person / review | The latest Report is `ready` | Awaiting review |
-| person / blocked, failed | The latest Report is `blocked` or `failed`, and no person's message reached the Ticket since | Blocked · Failed |
-| working / queued | No Assignment, or a pending one | Queued |
-| idle | The latest Report is `waiting`, or the Assignment ended | Waiting for a Trigger |
-| working | Everything else | Working |
+| person / delivery | Доставка Input в Executor Session не удалась; повтор через 2 секунды, затем через задержку, которая удваивается до минуты, а успех, новое Назначение или завершение Тикета снимают её | Input undelivered |
+| person / answer | У него есть Attention | Awaiting answer |
+| person / review | Последний Report — `ready` | Awaiting review |
+| person / blocked, failed | Последний Report — `blocked` или `failed`, и с тех пор ни одно сообщение человека не достигло Тикета | Blocked · Failed |
+| working / queued | Нет Назначения, или оно pending | Queued |
+| idle | Последний Report — `waiting`, или Назначение завершилось | Waiting for a Trigger |
+| working | Всё остальное | Working |
 
-A `person` stage means the Ticket cannot continue without human input. A new human message releases a `blocked` or `failed` Ticket to its Executor, so it moves to the next matching stage, usually `working`.
+Стадия `person` означает, что Тикет не может продолжаться без человеческого ввода. Новое человеческое сообщение освобождает Тикет `blocked` или `failed` его Исполнителю, поэтому он переходит на следующую совпавшую стадию, обычно `working`.
 
-An `idle` Ticket has finished its turn without an outstanding question. A Trigger on a subscribed Thread can continue it.
+Тикет `idle` завершил свой ход без оставшегося вопроса. Триггер на подписанном Треде может продолжить его.
 
-## The Executor
+## Исполнитель
 
-Each Ticket gets an Executor Session named `worker-<ticket id>` and a directory named after the Ticket's short name. Directories are created under the configured execution root, which defaults to `<stateDir>/work`.
+Каждый Тикет получает Executor Session с именем `worker-<ticket id>` и директорию, названную по короткому имени Тикета. Директории создаются под настроенным корнем исполнения, который по умолчанию равен `<stateDir>/work`.
 
-Executor Sessions run commands without approval as the operator's OS user. Their `dsh-superagent-worker` preset contains the tools needed for work and moves foreground shell commands to background jobs after 5 seconds. This lets a worker receive new messages at the next step instead of waiting for a long command to finish.
+Executor Sessions выполняют команды без одобрения как пользователь ОС оператора. Их пресет `dsh-superagent-worker` содержит инструменты, нужные для работы, и переводит команды переднего плана в фоновые задания через 5 секунд. Это позволяет worker получать новые сообщения на следующем шаге вместо ожидания завершения длинной команды.
 
-The main Session uses `dsh-superagent-router`, with the same 5-second shell and job-wait limits and a smaller tool set for routing. Sessions retain the preset selected at creation. Worker subagents use DeepSeek Harness's `standard` preset.
+Главная Сессия использует `dsh-superagent-router`, с теми же 5-секундными лимитами shell и ожидания задания и меньшим набором инструментов для маршрутизации. Сессии сохраняют пресет, выбранный при создании. Субагенты worker используют пресет `standard` DeepSeek Harness.
 
-### Background work and worker slots
+### Фоновая работа и слоты worker
 
-When a turn ends with shell jobs or subagents still running, the Ticket keeps its worker slot and stays working. It is not reported as waiting, and the main Session receives no waiting report. A completed job or subagent wakes the Executor with its result in the same slot. Once a turn ends with no background work, the Executor reports waiting normally.
+Когда ход завершается с всё ещё выполняющимися shell-заданиями или субагентами, Тикет сохраняет свой слот worker и остаётся рабочим. Он не сообщается как ожидающий, и главная Сессия не получает отчёт об ожидании. Завершённое задание или субагент пробуждает Исполнителя с его результатом в том же слоте. Когда ход завершается без фоновой работы, Исполнитель сообщает ожидание как обычно.
 
-After each turn, background work has at most 30 minutes to finish. At that limit, shell jobs are killed and the Ticket is reported waiting. The report includes the Executor's last words and which jobs were killed or subagents remain active. Subagents are allowed to continue. The Executor reads killed-job results on its next turn.
+После каждого хода у фоновой работы есть максимум 30 минут на завершение. По этому лимиту shell-задания убиваются, а Тикет сообщается как ожидающий. Отчёт включает последние слова Исполнителя и какие задания были убиты или какие субагенты остаются активными. Субагентам разрешено продолжаться. Исполнитель читает результаты убитых заданий на своём следующем ходе.
 
-A handoff to a person frees the slot immediately and leaves the Report in effect. This applies after a `ready` Report or a question, unless another Input arrived since, and after any `blocked` or `failed` Report.
+Передача человеку освобождает слот немедленно и оставляет Отчёт в силе. Это применяется после Отчёта `ready` или вопроса, если с тех пор не пришёл другой Input, и после любого Отчёта `blocked` или `failed`.
 
-At handoff, subagents stop. Shell jobs, such as a server offered for review, may continue until the Assignment ends. They hold no slot and are exempt from the 30-minute limit, including after later turns. Their completion does not wake the Executor; it reads the results on its next turn.
+При передаче субагенты останавливаются. Shell-задания, такие как сервер, предложенный для ревью, могут продолжаться до завершения Назначения. Они не занимают слот и освобождены от 30-минутного лимита, в том числе после последующих ходов. Их завершение не пробуждает Исполнителя; он читает результаты на следующем ходе.
 
-A person can also start a turn by writing directly in the Executor Session. Its background work follows the same rules.
+Человек также может начать ход, написав напрямую в Executor Session. Её фоновая работа следует тем же правилам.
 
-When an Assignment ends, its shell jobs are killed without waking the Session. Its subagents are released, and any completion turns they wake are dropped. The replacement Assignment and its waiting Inputs start after that shutdown finishes.
+Когда Назначение завершается, его shell-задания убиваются, не пробуждая Сессию. Его субагенты освобождаются, а любые ходы завершения, которые они пробуждают, отбрасываются. Заменяющее Назначение и его ожидающие Inputs начинаются после завершения этого отключения.
 
-Stopping or restarting the plugin inside the DeepSeek Harness process uses the same shutdown path. Inputs not yet taken into Session history are retained. Shutdown waits up to 10 seconds for each worker's background work; a process restart ends that work outright. An Assignment interrupted while busy restarts with a recovery note.
+Остановка или перезапуск плагина внутри процесса DeepSeek Harness использует тот же путь отключения. Inputs, ещё не взятые в историю Сессии, сохраняются. Отключение ждёт до 10 секунд фоновую работу каждого worker; перезапуск процесса завершает эту работу сразу. Назначение, прерванное в процессе работы, перезапускается с заметкой о восстановлении.
 
-Worker subagents, including nested ones, use DeepSeek Harness's `standard` preset with the worker's permissions. They retain only the worker's allowed work tools, and lose those tools when the Ticket ends. Under `standard`, a shell command moves to the background after 60 seconds. A subagent's jobs are killed when it ends.
+Субагенты worker, включая вложенные, используют пресет `standard` DeepSeek Harness с разрешениями worker. Они сохраняют только разрешённые рабочие инструменты worker и теряют эти инструменты при завершении Тикета. Под `standard` shell-команда переходит в фон через 60 секунд. Задания субагента убиваются при его завершении.
 
-### Preparing a Ticket directory
+### Подготовка директории Тикета
 
-Before the first Assignment, if the Ticket directory does not exist, the prepare command runs once with `sh` in the execution root. It has ten minutes to finish. Without a prepare command, the worker starts in an empty directory.
+Перед первым Назначением, если директория Тикета не существует, команда prepare выполняется один раз с помощью `sh` в корне исполнения. У неё есть десять минут на завершение. Без команды prepare worker начинает в пустой директории.
 
-A failed command fails the Ticket and records its output. A retry or a person's message on one of the Ticket's Threads tries preparation again. A typical command uses `git worktree` to create a checkout. A pull request belongs to the Ticket when its branch's last path segment matches the Ticket's short name.
+Неудачная команда проваливает Тикет и фиксирует его вывод. Повтор или сообщение человека на одном из Тредов Тикета снова пробует подготовку. Типичная команда использует `git worktree` для создания checkout. Pull request принадлежит Тикету, когда последний сегмент пути его ветки совпадает с коротким именем Тикета.
 
-### Concurrency
+### Параллелизм
 
-A Ticket holds a worker slot from the start of a launch, including preparation, or from the delivery that wakes its idle Executor. It also holds the slot throughout an active turn.
+Тикет удерживает слот worker с начала запуска, включая подготовку, или с доставки, которая пробуждает его idle Исполнителя. Он также удерживает слот на протяжении активного хода.
 
-The configured concurrency limit applies to these slots, with one extra slot for a person's message or a status request. Such a wake can use the extra slot when normal slots are full, and takes the next free slot before a new launch. New work therefore cannot prevent a person from continuing an existing Ticket.
+Настроенный лимит параллелизма применяется к этим слотам, с одним дополнительным слотом для сообщения человека или запроса статуса. Такое пробуждение может использовать дополнительный слот, когда обычные слоты заполнены, и занимает следующий свободный слот перед новым запуском. Поэтому новая работа не может помешать человеку продолжить существующий Тикет.
 
-Other Inputs, such as CI results, wait for a normal slot. A launch waits in `working / queued` until a slot is free. Launches run concurrently, so a slow prepare command delays only its own Ticket.
+Другие Inputs, такие как результаты CI, ждут обычный слот. Запуск ждёт в `working / queued`, пока слот не освободится. Запуски выполняются параллельно, поэтому медленная команда prepare задерживает только свой собственный Тикет.
 
-### Execution variables
+### Переменные исполнения
 
-The prepare command and Executor instructions receive the same execution variables. The command reads environment variables; the Executor reads their values and descriptions in its prompt. None contains credentials.
+Команда prepare и инструкции Исполнителя получают одни и те же переменные исполнения. Команда читает переменные окружения; Исполнитель читает их значения и описания в своём промпте. Ни одна не содержит учётные данные.
 
-| Variable | Registered by | Value |
+| Переменная | Зарегистрирована | Значение |
 | --- | --- | --- |
-| `DSH_SUPERAGENT_DIR`, `DSH_SUPERAGENT_NAME`, `DSH_SUPERAGENT_TICKET` | Executor | The Ticket's directory, short name and id |
-| `DSH_SUPERAGENT_BLOCKED_COMMANDS` | Executor | Commands the Executor may not run |
-| `DSH_SUPERAGENT_GITHUB_REPOSITORY` | GitHub | The repository the Source watches, `owner/name` |
-| `DSH_SUPERAGENT_GITHUB_ACCOUNT`, `DSH_SUPERAGENT_GITHUB_COMMIT_EMAIL` | GitHub | The agent account and its commit email |
-| `DSH_SUPERAGENT_GITHUB_NUMBER`, `DSH_SUPERAGENT_GITHUB_PR_HEAD` | GitHub | The Issue or pull request that started the Ticket, and its head ref when it is a pull request |
-| `DSH_SUPERAGENT_FEISHU_BOT`, `DSH_SUPERAGENT_FEISHU_CHAT` | Feishu | The bot, and the chat that started the Ticket |
+| `DSH_SUPERAGENT_DIR`, `DSH_SUPERAGENT_NAME`, `DSH_SUPERAGENT_TICKET` | Исполнитель | Директория Тикета, короткое имя и id |
+| `DSH_SUPERAGENT_BLOCKED_COMMANDS` | Исполнитель | Команды, которые Исполнитель не может выполнять |
+| `DSH_SUPERAGENT_GITHUB_REPOSITORY` | GitHub | Репозиторий, за которым следит Источник, `owner/name` |
+| `DSH_SUPERAGENT_GITHUB_ACCOUNT`, `DSH_SUPERAGENT_GITHUB_COMMIT_EMAIL` | GitHub | Аккаунт агента и его email для коммитов |
+| `DSH_SUPERAGENT_GITHUB_NUMBER`, `DSH_SUPERAGENT_GITHUB_PR_HEAD` | GitHub | Issue или pull request, запустивший Тикет, и его head ref, когда это pull request |
+| `DSH_SUPERAGENT_FEISHU_BOT`, `DSH_SUPERAGENT_FEISHU_CHAT` | Feishu | Бот и чат, запустивший Тикет |
 
-Ticket-specific values come from its directory and originating Trigger. Other values come from the current deployment settings. Only the panel can change execution environment settings; text sent to the main Session cannot change the configured shell command.
+Значения, специфичные для Тикета, берутся из его директории и исходного Триггера. Другие значения берутся из текущих настроек развёртывания. Только панель может менять настройки среды исполнения; текст, отправленный главной Сессии, не может изменить настроенную shell-команду.
 
-Workers reach GitHub through the agent account's `gh` and Feishu through the bot's `lark-cli`. Blocked commands fail when invoked by name.
+Workers достигают GitHub через `gh` аккаунта агента и Feishu через `lark-cli` бота. Заблокированные команды не выполняются при вызове по имени.
 
-These wrappers and directories establish defaults, not a security boundary. A worker can still execute a program by absolute path.
+Эти обёртки и директории устанавливают значения по умолчанию, а не границу безопасности. Worker всё равно может выполнить программу по абсолютному пути.
 
-## Merging
+## Слияние
 
-Auto-merge is governed by the **Delivery requirements** prompt. The host has no merge-specific decision logic.
+Auto-merge управляется промптом **Delivery requirements**. У хоста нет специфичной для слияния логики решений.
 
-By default, the Executor never enables auto-merge as the agent account: GitHub attributes the merge to whoever enabled it. Delivery requirements must name another account's CLI for merging. Without one, people merge the pull request.
+По умолчанию Исполнитель никогда не включает auto-merge от имени аккаунта агента: GitHub приписывает слияние тому, кто его включил. Delivery requirements должен назвать CLI другого аккаунта для слияния. Без него люди мерджат pull request.
 
-The default instructions allow auto-merge only for a pull request opened for the Ticket, when it is ready, the required approvals cover the head commit, and additions plus deletions total fewer than 200 lines. Before pushing another revision, the Executor withdraws auto-merge.
+Инструкции по умолчанию разрешают auto-merge только для pull request, открытого для Тикета, когда он готов, требуемые одобрения покрывают head-коммит, а добавления плюс удаления в сумме меньше 200 строк. Перед отправкой другой ревизии Исполнитель отзывает auto-merge.
 
-Reviews without a body, such as approvals, also arrive as Triggers and can wake an Executor waiting for review. These instructions govern the agent, not GitHub's merge rules. To enforce approvals, require them in branch protection and dismiss stale approvals. Omit the merge CLI or remove the auto-merge paragraph to require manual merging.
+Ревью без текста, такие как одобрения, также приходят как Триггеры и могут пробудить Исполнителя, ожидающего ревью. Эти инструкции управляют агентом, а не правилами слияния GitHub. Чтобы обеспечить соблюдение одобрений, требуйте их в защите ветки и отменяйте устаревшие одобрения. Опустите CLI слияния или удалите абзац auto-merge, чтобы требовать ручного слияния.
 
-## How a Ticket ends
+## Как завершается Тикет
 
-- **Ready without a pull request:** a `ready` Report ends the Ticket as completed.
-- **Nothing to do:** an Executor that finds no work for a person to act on, such as a request that does not reproduce or is superseded, reports `dropped`. The Ticket ends without a message, unless a matched rule asks for one, and a person's later message on its Threads resumes it.
-### Pull requests
+- **Готов без pull request:** Отчёт `ready` завершает Тикет как выполненный.
+- **Нечего делать:** Исполнитель, который не находит работы для действий человека, например запрос, который не воспроизводится или заменён, сообщает `dropped`. Тикет завершается без сообщения, если совпавшее правило не запросит его, а более позднее сообщение человека на его Тредах возобновляет его.
+### Pull request
 
-A Ticket follows the pull request it started from once its Executor reports it. It also follows each pull request opened from its branch once reported by the Executor or found by the GitHub Source. Reopened pull requests are followed again.
+Тикет следует за pull request, с которого начался, после того как его Исполнитель сообщит о нём. Он также следует за каждым pull request, открытым из его ветки, после сообщения Исполнителя или обнаружения Источником GitHub. Переоткрытые pull request сопровождаются снова.
 
-The Ticket is done when none of the pull requests it opened remain open. If it opened none, all pull requests it follows must be closed. It then ends with the outcome of the last relevant close and keeps its Subscriptions, allowing a later human comment to resume it.
+Тикет готов, когда ни один из pull request, которые он открыл, не остаётся открытым. Если он не открыл ни одного, все pull request, за которыми он следует, должны быть закрыты. Затем он завершается с исходом последнего значимого закрытия и сохраняет свои Подписки, позволяя более позднему человеческому комментарию возобновить его.
 
-A close does not end the Ticket while resumed, retried or recovered work is unfinished. It also waits if the Executor acknowledged or answered a follow-up it owns but has not since made a non-progress Report or ended a turn after reading that message. A later `ready` Report ends the Ticket once the same pull-request completion rule is satisfied.
+Закрытие не завершает Тикет, пока возобновлённая, повторённая или восстановленная работа не завершена. Он также ждёт, если Исполнитель подтвердил или ответил на фоллоу-ап, которым владеет, но с тех пор не сделал non-progress Отчёт и не завершил ход после прочтения этого сообщения. Более поздний Отчёт `ready` завершает Тикет, как только удовлетворяется то же правило завершения pull request.
 
-Chat Channels receive one final notice about the pull-request outcome. GitHub already displays the outcome on the pull request itself. Removing a Ticket's Subscription to a pull request also stops it following that pull request.
+Чат-Каналы получают одно финальное уведомление об исходе pull request. GitHub уже отображает исход на самом pull request. Удаление Подписки Тикета на pull request также останавливает его следование за этим pull request.
 
-"Awaiting review" therefore means a `ready` Report with a pull request.
+Поэтому «Awaiting review» означает Отчёт `ready` с pull request.
 
-### Follow-ups and context Threads
+### Фоллоу-апы и контекстные Треды
 
-The Executor decides human follow-ups on its Ticket's own Threads. It handles in-scope requests and hands back requests beyond its scope or for another Ticket. Once no Executor owns the message, it becomes a candidate for the main Session. The main Session may otherwise act on the follow-up only to stop work at the person's request.
+Исполнитель решает человеческие фоллоу-апы на собственных Тредах своего Тикета. Он обрабатывает запросы в пределах области и возвращает запросы за пределами своей области или для другого Тикета. Как только ни один Исполнитель не владеет сообщением, оно становится кандидатом для главной Сессии. Иначе главная Сессия может действовать на фоллоу-ап только для остановки работы по запросу человека.
 
-An Input counts as read after the Session takes it into a step and subsequently reports or ends a turn. When a Ticket ends, unread messages that were not acknowledged, answered or handed back return to Eval, as described in [002 Authorization](002-authorization.md). Read messages left without action, such as thanks, do not.
+Input считается прочитанным после того, как Сессия берёт его в шаг и затем сообщает Отчёт или завершает ход. Когда Тикет завершается, непрочитанные сообщения, которые не были подтверждены, отвечены или возвращены, возвращаются в Оценку, как описано в [002 Authorization](002-authorization.md). Прочитанные сообщения, оставленные без действия, например благодарности, — нет.
 
-Threads followed only for context still deliver messages, but do not give the Ticket ownership of human follow-ups or resume ended Tickets. Those messages can be assessed independently.
+Треды, за которыми следят только для контекста, всё равно доставляют сообщения, но не дают Тикету владение человеческими фоллоу-апами и не возобновляют завершённые Тикеты. Эти сообщения могут оцениваться независимо.
 
-Sources poll subscribed Threads while a live Ticket subscribes, and for two weeks after the later of the last Trigger and the subscribing Tickets' end. Afterwards, messages arrive only through ordinary intake: GitHub notifications or Feishu live events.
+Источники опрашивают подписанные Треды, пока живой Тикет подписан, и в течение двух недель после более позднего из последнего Триггера и завершения подписанных Тикетов. После этого сообщения приходят только через обычный приём: уведомления GitHub или живые события Feishu.
 
-## Failure and recovery
+## Сбой и восстановление
 
-### Executor blocked or failed
+### Исполнитель заблокирован или провален
 
-When an Executor Session reports `blocked` or `failed`, or fails to start or errors, which records `failed`, the Ticket takes no automatic Input.
+Когда Executor Session сообщает `blocked` или `failed`, или не может запуститься или ошибается, что фиксирует `failed`, Тикет не получает автоматический Input.
 
-A passing failure of the model provider or the network, an HTTP 408, 429 or 5xx or a refused, reset or timed-out connection, is tried again first, three times with a growing backoff: a launch runs again, and a worker whose turn failed is told to go on; a failed prepare command is not tried again.
+Проходящий сбой поставщика модели или сети, HTTP 408, 429 или 5xx либо отклонённое, сброшенное или истёкшее соединение, сначала пробуется снова, трижды с растущим backoff: запуск выполняется снова, а worker, чей ход провалился, получает указание продолжать; неудачная команда prepare не пробуется снова.
 
-Once failed, CI and bot messages are recorded on it, but they are not delivered and do not wake the Session.
+После провала сообщения CI и ботов фиксируются на нём, но не доставляются и не пробуждают Сессию.
 
-Its tools stay available, so a person can continue in the Session directly.
+Его инструменты остаются доступными, поэтому человек может продолжить в Сессии напрямую.
 
-A launch that failed is not tried again on its own.
+Запуск, который провалился, не пробуется снова сам по себе.
 
-A person's message, a later Report that is neither `blocked` nor `failed`, or a retry ends the hold.
+Сообщение человека, более поздний Отчёт, который не `blocked` и не `failed`, или повтор завершают удержание.
 
-It is worked out from the stored Reports and Inputs, so a restart keeps it.
-### Retry
+Он восстанавливается из сохранённых Отчётов и Inputs, поэтому перезапуск сохраняет его.
+### Повтор
 
-Available while an open Ticket is in `person / delivery`, `person / blocked` or `person / failed`: a new Assignment, which starts its worker again and takes the Inputs that wait, is the remedy for each.
+Доступен, пока открытый Тикет в `person / delivery`, `person / blocked` или `person / failed`: новое Назначение, которое снова запускает его worker и берёт ожидающие Inputs, — средство для каждого.
 
-Once a person's message reached a blocked or failed Ticket, the Executor has the message, so the Ticket shows as working, or as queued when a failed launch starts again, and offers no retry, unless delivering that message failed.
+Как только сообщение человека достигло заблокированного или проваленного Тикета, у Исполнителя есть сообщение, поэтому Тикет показывается как working или как queued, когда проваленный запуск начинается снова, и не предлагает повтор, если только доставка этого сообщения не провалилась.
 
-A retry ends the current Assignment and starts a new one in the same Executor Session, directory, branch and pull request.
+Повтор завершает текущее Назначение и начинает новое в той же Executor Session, директории, ветке и pull request.
 
-The Executor model applies only when a Session is created; an existing Session keeps its model.
-### Restart
+Модель Исполнителя применяется только при создании Сессии; существующая Сессия сохраняет свою модель.
+### Перезапуск
 
-Running Assignments end with "host restarted" and new ones start with a recovery note that tells the Executor to check its directory, git history and GitHub before repeating any outside action, oldest Ticket first.
+Выполняющиеся Назначения завершаются с «host restarted», а новые начинаются с заметки о восстановлении, которая говорит Исполнителю проверить свою директорию, историю git и GitHub перед повторением любого внешнего действия, начиная с самого старого Тикета.
 
-Assignments that are waiting, ready, blocked or failed stay as they are, unless an Input reached them after that Report, in which case they start again too.
+Назначения, которые ожидают, готовы, заблокированы или провалены, остаются как есть, если только Input не достиг их после этого Отчёта, в каковом случае они тоже начинаются снова.
 
-Sessions, directories, Subscriptions, pending messages and the stored work below survive a restart, and so does the record of which messages each Executor Session took into its history, which a step does once it claimed them and before its model call: a message taken by a turn the restart cut off counts as read once a Report or the end of a turn follows, while one a step claimed but a cancel or error cut off before the history counts as unread.
+Сессии, директории, Подписки, ожидающие сообщения и сохранённая работа ниже переживают перезапуск, как и запись о том, какие сообщения каждая Executor Session взяла в свою историю, что шаг делает, как только он их заявил и до вызова модели: сообщение, взятое ходом, который обрезал перезапуск, считается прочитанным, как только следует Отчёт или конец хода, а сообщение, которое шаг заявил, но отмена или ошибка обрезали до истории, считается непрочитанным.
 
-A retry or a restart gives the new Assignment again the messages delivered to the Assignment it replaces that its Executor Session did not take, which a cancel or a cut-off step may have dropped; a copy still waiting in the Session, kept by a restart or persisted across a crash, is taken out before the new Assignment's first message, so the new delivery is the only copy.
-### Stored work
+Повтор или перезапуск даёт новому Назначению снова сообщения, доставленные заменяемому Назначению, которые его Executor Session не взял, которые мог отбросить отменённый или обрезанный шаг; копия, всё ещё ожидающая в Сессии, сохранённая перезапуском или пережившая сбой, извлекается перед первым сообщением нового Назначения, поэтому новая доставка — единственная копия.
+### Сохранённая работа
 
-What dsh-superagent does after a decision, such as relaying a candidate, a follow-up or a report to the main Session, launching an Assignment or delivering an Input, is stored first and done afterwards.
+То, что dsh-superagent делает после решения, например передаёт кандидата, фоллоу-ап или отчёт главной Сессии, запускает Назначение или доставляет Input, сначала сохраняется, а затем выполняется.
 
-A relay or a delivery that fails, such as when its Session cannot be reached, is retried after 2 seconds, then after a delay that doubles up to a minute; a launch that fails fails its Ticket, unless the failure was a passing one, as above.
+Передача или доставка, которая провалилась, например когда её Сессия недостижима, повторяется через 2 секунды, затем через задержку, которая удваивается до минуты; запуск, который провалился, проваливает свой Тикет, если только сбой не был проходящим, как выше.
 
-Each kind of work reports an error among the overview's system problems only after one item failed three times in a row; a failed Input delivery shows on its Ticket instead.
+Каждый вид работы сообщает об ошибке среди системных проблем обзора только после того, как один элемент провалился три раза подряд; проваленная доставка Input отображается на его Тикете вместо этого.
 
-Relays to the main Session keep their order, and so do notices; a failed one holds back the later ones of its kind.
-### Source failure
+Передачи главной Сессии сохраняют свой порядок, как и уведомления; проваленная одна задерживает более поздние из своего вида.
+### Сбой Источника
 
-The GitHub Source reads each Issue, pull request and Thread on its own: a failed read keeps its error on its Thread, is read again on the next poll, and counts towards an error of the Source, which it reports after three failed polls in a row by default; any successful poll resets the count.
+Источник GitHub читает каждый Issue, pull request и Тред сам по себе: проваленное чтение сохраняет свою ошибку на своём Треде, читается снова при следующем опросе и считается в сторону ошибки Источника, о которой он сообщает после трёх проваленных опросов подряд по умолчанию; любой успешный опрос сбрасывает счётчик.
 
-GitHub answers 404 also when the agent lost access to a private repository, so a 404 is retried.
+GitHub отвечает 404 также тогда, когда агент потерял доступ к приватному репозиторию, поэтому 404 пробуется снова.
 
-A notified Issue or pull request whose reads keep failing is dropped a day after its first failed read, and at once when GitHub reports it as deleted; it then no longer fails the poll, its Thread keeps the error, and the Source's state names it.
+Уведомлённый Issue или pull request, чьи чтения продолжают проваливаться, отбрасывается через день после первого проваленного чтения и сразу, когда GitHub сообщает его как удалённый; затем он больше не проваливает опрос, его Тред сохраняет ошибку, а состояние Источника называет его.
 
-Its read position stays where it was, so a later notification or a poll of its Thread reads what the failed reads missed.
+Его позиция чтения остаётся там, где была, поэтому более позднее уведомление или опрос его Треда читает то, что проваленные чтения пропустили.
 
-The Feishu event consumer reports every failure, and polling of subscribed topics keeps each failure on its Thread.
+Потребитель событий Feishu сообщает о каждом сбое, а опрос подписанных тем сохраняет каждый сбой на его Треде.
 
-A malformed item in a GitHub list or a Feishu page is skipped, and the Source's state counts it.
-### Channel failure
+Некорректный элемент в списке GitHub или странице Feishu пропускается, а состояние Источника считает его.
+### Сбой Канала
 
-Outgoing messages are stored and sent as stored work, retried with backoff from 5 seconds, doubling up to 300.
+Исходящие сообщения сохраняются и отправляются как сохранённая работа, повторяются с backoff от 5 секунд, удваиваясь до 300.
 
-A Ticket's messages to one conversation go out in the order they were queued, so its acknowledgement comes before its later answer or result: a message waits while an earlier one of the same Ticket to the same conversation has not gone out, until that one has failed three times in a row and shows as a problem.
+Сообщения Тикета в одну беседу выходят в порядке их постановки в очередь, поэтому его подтверждение идёт перед более поздним ответом или результатом: сообщение ждёт, пока более раннее из того же Тикета в ту же беседу не вышло, пока оно не провалилось три раза подряд и не отображается как проблема.
 
-Messages of other Tickets, and messages of no Ticket, do not wait for it.
+Сообщения других Тикетов и сообщения без Тикета не ждут его.
 
-A message with failed attempts is a system problem until it goes out or is withdrawn.
+Сообщение с проваленными попытками — системная проблема, пока оно не выйдет или не будет отозвано.
 
-A message is dropped only when its Source no longer listens to the conversation, or when the Source answers that the conversation can never receive it; while its Source is off, it waits.
+Сообщение отбрасывается только тогда, когда его Источник больше не слушает беседу, или когда Источник отвечает, что беседа никогда не сможет его получить; пока его Источник выключен, оно ждёт.
 
-The Sources answer that for a deleted Issue or a locked conversation on GitHub, and for a recalled message or one Feishu no longer finds on Feishu.
+Источники отвечают так для удалённого Issue или заблокированной беседы на GitHub и для отозванного сообщения или сообщения, которое Feishu больше не находит, на Feishu.
 
-A reply to a review comment that no longer exists goes to the pull request's conversation instead.
+Ответ на комментарий ревью, который больше не существует, идёт в беседу pull request вместо этого.
 
-A dropped message keeps its record, with when and why it was dropped and the Ticket it was for, so it is never queued again; a dropped acknowledgement reads as dropped, not sent.
-### Pause processing
+Отброшенное сообщение сохраняет свою запись, с тем когда и почему оно было отброшено и для какого Тикета, поэтому оно никогда не ставится в очередь снова; отброшенное подтверждение читается как отброшенное, а не отправленное.
+### Пауза обработки
 
-Stops dispatch, new Evals, Eval timeouts, Input delivery and replies; a launch already under way waits until processing resumes.
+Останавливает отправку, новые Оценки, таймауты Оценок, доставку Input и ответы; запуск, уже идущий, ждёт, пока обработка не возобновится.
 
-Sources keep recording Triggers, and a running Executor turn is not interrupted.
+Источники продолжают фиксировать Триггеры, а выполняющийся ход Исполнителя не прерывается.
 
-A person's message to an ended Ticket waits: the first pass after the pause resumes the Ticket, if its Mandate holds under the Policy then.
+Сообщение человека в завершённый Тикет ждёт: первый проход после паузы возобновляет Тикет, если его Мандат действует при Политике тогда.
 
-An Eval in progress does not expire during a pause; its deadline moves later by the pause's length.
-### Invalid configuration
+Идущая Оценка не истекает во время паузы; её крайний срок сдвигается позже на длину паузы.
+### Некорректная конфигурация
 
-A stored Source configuration that its kind rejects disables that Source instance.
+Сохранённая конфигурация Источника, которую его вид отклоняет, отключает этот экземпляр Источника.

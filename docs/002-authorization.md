@@ -1,155 +1,155 @@
-# 002 Authorization
+# 002 Авторизация
 
-Authorization determines who may start work and what that work may include. This document builds on [001 Domain model](001-domain.md).
+Авторизация определяет, кто может начинать работу и что эта работа может включать. Этот документ опирается на [001 Domain model](001-domain.md).
 
-The host enforces allowed lists, rules and Mandates. Messages, comments and quoted documents are inputs to a decision; they cannot change those permissions.
+Хост обеспечивает соблюдение списков разрешённых, правил и Мандатов. Сообщения, комментарии и цитируемые документы — это входные данные для решения; они не могут менять эти разрешения.
 
-## Two paths for a Trigger
+## Два пути для Триггера
 
-### Eval: deciding whether to start work
+### Оценка: решение, начинать ли работу
 
-The Source records whether a message addresses the agent: `mention` for a mention of the bot or agent account, and `direct` for a direct message. The gate checks the sender and the Source's Policy:
+Источник фиксирует, обращается ли сообщение к агенту: `mention` для упоминания бота или аккаунта агента и `direct` для прямого сообщения. Шлюз проверяет отправителя и Политику Источника:
 
-- An allowed person who addresses the agent makes an explicit request.
-- A person's follow-up on a Thread with Tickets follows the rules below.
-- Other human messages use the admission table for their receiving scope.
-- A bot on the Source's bot list can produce an inferred candidate, never an explicit request. Other bots are not admitted.
+- Разрешённый человек, обращающийся к агенту, делает явный запрос.
+- Фоллоу-ап человека на Треде с Тикетами следует правилам ниже.
+- Другие сообщения людей используют таблицу приёма для своей области получения.
+- Бот из списка ботов Источника может создать предполагаемого кандидата, никогда явный запрос. Другие боты не допускаются.
 
-### Subscriptions: continuing existing work
+### Подписки: продолжение существующей работы
 
-Every message on a subscribed Thread reaches its subscribed Tickets as context, including messages from bots and CI. This delivery bypasses the gate and grants no new authority. Each Ticket remains limited by its Mandate.
+Каждое сообщение на подписанном Треде достигает его подписанных Тикетов как контекст, включая сообщения от ботов и CI. Эта доставка обходит шлюз и не даёт новых полномочий. Каждый Тикет остаётся ограниченным своим Мандатом.
 
-A person's message on a Ticket's own Thread belongs to that Ticket's Executor to decide. The same applies when the main Session attaches a message to a Ticket. While an Executor owns the message, it takes no Eval and gets no Decision. Each Executor either handles the request within its Ticket's scope or hands it back for routing elsewhere.
+Сообщение человека на собственном Треде Тикета решает Исполнитель этого Тикета. То же применяется, когда главная Сессия прикрепляет сообщение к Тикету. Пока Исполнитель владеет сообщением, оно не проходит Оценку и не получает Решение. Каждый Исполнитель либо обрабатывает запрос в пределах области своего Тикета, либо возвращает его для маршрутизации в другое место.
 
-Ownership continues while the Ticket is live, even if a person removes its Subscription. It also covers an ended Ticket that was not stopped by a person and has the message waiting to resume it.
+Владение продолжается, пока Тикет живой, даже если человек удалил его Подписку. Оно также охватывает завершённый Тикет, который не был остановлен человеком и имеет сообщение, ожидающее его возобновления.
 
-The main Session receives a follow-up notice. While an Executor owns the message, the main Session may only stop work on the person's request; accept, attach, ignore and requeue are refused. A stop still passes through the gate with the follow-up strength described below.
+Главная Сессия получает уведомление о фоллоу-апе. Пока Исполнитель владеет сообщением, главная Сессия может только остановить работу по запросу человека; accept, attach, ignore и requeue отклоняются. Остановка всё равно проходит через шлюз с силой фоллоу-апа, описанной ниже.
 
-### Handing back and releasing follow-ups
+### Возврат и освобождение фоллоу-апов
 
-An Executor hands a message back once when it asks for work beyond the Ticket's scope or belongs to another Ticket. The Ticket keeps its Subscription. If an attached Thread is unrelated, the Executor hands back the messages it owns there.
+Исполнитель возвращает сообщение один раз, когда оно запрашивает работу за пределами области Тикета или принадлежит другому Тикету. Тикет сохраняет свою Подписку. Если прикреплённый Тред не относится к делу, Исполнитель возвращает сообщения, которыми владеет там.
 
-A message goes to a fresh Eval only after no Ticket still owns it. Its candidate includes the Executors' reasons. The gate judges it as an ordinary message on that Thread, and the main Session can accept it, attach it elsewhere or ignore it. Handing back a message the Ticket did not own, such as a bot message or one a person already sent to Eval, queues nothing.
+Сообщение попадает в свежую Оценку только после того, как ни один Тикет больше им не владеет. Его кандидат включает причины Исполнителей. Шлюз судит о нём как об обычном сообщении на этом Треде, и главная Сессия может принять его, прикрепить в другое место или проигнорировать. Возврат сообщения, которым Тикет не владел, например сообщения бота или сообщения, которое человек уже отправил в Оценку, ничего не ставит в очередь.
 
-When a Ticket ends, it releases follow-ups its Executor did not read or take up. These include messages never delivered to the Executor and messages delivered after its last Report or turn end, provided it neither acknowledged, answered nor handed them back. Each released message goes to Eval when no other Ticket owns it. A stop ends only the stopped Ticket's work.
+Когда Тикет завершается, он освобождает фоллоу-апы, которые его Исполнитель не прочитал или не взял. Они включают сообщения, никогда не доставленные Исполнителю, и сообщения, доставленные после его последнего Отчёта или завершения хода, при условии, что он их не подтвердил, не ответил и не вернул. Каждое освобождённое сообщение идёт в Оценку, когда им не владеет другой Тикет. Остановка завершает только работу остановленного Тикета.
 
-A stopped Ticket does not send its stop message to Eval again unless another Ticket handed it back. The main Session that stopped it may accept the rest of the message as new work.
+Остановленный Тикет не отправляет своё сообщение об остановке в Оценку снова, если только другой Тикет не вернул его. Главная Сессия, которая остановила его, может принять остальную часть сообщения как новую работу.
 
-A person can send an owned follow-up to Eval from the panel. If the main Session then attaches it back to a live Ticket, the Executor receives it again. The panel also offers re-evaluation when no effective judgement covers the message.
+Человек может отправить принадлежащее фоллоу-ап в Оценку с панели. Если главная Сессия затем прикрепляет его обратно к живому Тикету, Исполнитель получает его снова. Панель также предлагает повторную оценку, когда ни одно эффективное суждение не охватывает сообщение.
 
-### Context-only subscriptions
+### Подписки только для контекста
 
-An Executor can follow a related Thread, such as another Issue or pull request, for context. Its messages reach the Ticket but grant no authority or follow-up strength. Human messages there do not resume an ended Ticket unless the main Session attaches a message from that Thread. Notes from the main Session about other work are also context only.
+Исполнитель может следить за связанным Тредом, например за другим Issue или pull request, для контекста. Его сообщения достигают Тикета, но не дают полномочий или силы фоллоу-апа. Сообщения людей там не возобновляют завершённый Тикет, если только главная Сессия не прикрепит сообщение из этого Треда. Заметки от главной Сессии о другой работе — тоже только контекст.
 
-Human messages that reach no Ticket, including Threads whose Tickets were stopped by a person, take the Eval path. Bot messages take that path independently of their delivery to subscribed Tickets.
+Человеческие сообщения, которые не достигают ни одного Тикета, включая Треды, чьи Тикеты были остановлены человеком, идут путём Оценки. Сообщения ботов идут этим путём независимо от их доставки в подписанные Тикеты.
 
-## Strength
+## Сила
 
-| Strength | Cases |
+| Сила | Случаи |
 | --- | --- |
-| explicit | A person on the list addresses the agent, or follows up on a Thread that already has a Ticket; a cell of the admission table set to explicit request |
-| inferred | A person not on the list follows up on a Thread with a Ticket, unless their cell of the admission table is explicit; a cell of the admission table set to inferred candidate; a message of a bot on the Source's bot list that addresses the agent or arrives where the Source receives every message |
-| not admitted | Any other bot's message, everything the admission table ignores, and every inferred case while the accept mode is `off` |
+| explicit | Человек из списка обращается к агенту или делает фоллоу-ап на Треде, у которого уже есть Тикет; ячейка таблицы приёма, установленная на явный запрос |
+| inferred | Человек не из списка делает фоллоу-ап на Треде с Тикетом, если его ячейка таблицы приёма не explicit; ячейка таблицы приёма, установленная на предполагаемого кандидата; сообщение бота из списка ботов Источника, которое обращается к агенту или приходит туда, где Источник получает каждое сообщение |
+| not admitted | Сообщение любого другого бота, всё, что таблица приёма игнорирует, и каждый предполагаемый случай, пока режим приёма `off` |
 
-For an unlisted person, an explicit admission cell takes precedence even on a Thread with Tickets and works in every accept mode. Otherwise their follow-up is inferred and is not admitted in `off` mode. Messages on Threads followed only for context use the admission table instead of follow-up strength.
+Для человека не из списка явная ячейка приёма имеет приоритет даже на Треде с Тикетами и работает в любом режиме приёма. Иначе его фоллоу-ап предполагаемый и не допускается в режиме `off`. Сообщения на Тредах, за которыми следят только для контекста, используют таблицу приёма вместо силы фоллоу-апа.
 
-## Admission
+## Приём
 
-Each Source's Policy has an admission table. Its rows are receiving scopes:
+Политика каждого Источника имеет таблицу приёма. Её строки — это области получения:
 
-- **Feishu:** each configured chat, other chats the bot receives mentions from, and direct messages. Other chats are received only when **其他群** is set to **仅 @** on the Feishu card.
-- **GitHub:** new Issues, new pull requests, comments and the default branch's CI.
+- **Feishu:** каждый настроенный чат, другие чаты, из которых бот получает упоминания, и прямые сообщения. Другие чаты получаются только тогда, когда установлено **其他群** на **仅 @** на карточке Feishu.
+- **GitHub:** новые Issue, новые pull request, комментарии и CI базовой ветки.
 
-A row has up to three cells. Each cell decides whether a message becomes an explicit request, an inferred candidate or nothing:
+У строки до трёх ячеек. Каждая ячейка решает, становится ли сообщение явным запросом, предполагаемым кандидатом или ничем:
 
-| Cell | Choices | Default |
+| Ячейка | Варианты | По умолчанию |
 | --- | --- | --- |
-| On the list, not addressing the agent | inferred, ignore | inferred |
-| Not on the list, addressing the agent | explicit, inferred, ignore | ignore |
-| Not on the list, not addressing the agent | inferred, ignore | ignore |
+| В списке, не обращаясь к агенту | inferred, ignore | inferred |
+| Не в списке, обращаясь к агенту | explicit, inferred, ignore | ignore |
+| Не в списке, не обращаясь к агенту | inferred, ignore | ignore |
 
-Cells for unaddressed messages are available only where the Source receives every message, such as a Feishu chat set to **全部消息** or a GitHub scope with its receive-all switch enabled. A CI result has no sender, so its row offers only the last cell. Bot messages use the bot list instead of these cells.
+Ячейки для неадресованных сообщений доступны только там, где Источник получает каждое сообщение, например чат Feishu, установленный на **全部消息**, или область GitHub с включённым переключателем receive-all. У результата CI нет отправителя, поэтому его строка предлагает только последнюю ячейку. Сообщения ботов используют список ботов вместо этих ячеек.
 
-Setting the unlisted-addressed cell to explicit lets anyone in that scope request work by mentioning the agent. This can be useful for a dedicated support chat. Inferred candidates still depend on the accept mode. Follow-ups normally bypass this table, except that an explicit cell still grants explicit strength.
+Установка ячейки «не в списке — обращается» на explicit позволяет любому в этой области запрашивать работу, упоминая агента. Это может быть полезно для выделенного чата поддержки. Предполагаемые кандидаты всё равно зависят от режима приёма. Фоллоу-апы обычно обходят эту таблицу, за исключением того, что явная ячейка всё равно даёт явную силу.
 
-The admission table is part of the Policy version. Weakening a cell does not immediately stop open Tickets accepted under it. It can revoke their Mandates when they are revalidated before resuming.
+Таблица приёма — часть версии Политики. Ослабление ячейки немедленно не останавливает открытые Тикеты, принятые под ней. Оно может отозвать их Мандаты, когда они перепроверяются перед возобновлением.
 
-### Bots and automated reviewers
+### Боты и автоматизированные ревьюеры
 
-The host recognizes GitHub Apps, logins ending in `[bot]`, and Feishu bots as bots. A Source can list bots such as `dependabot[bot]` whose messages may become inferred candidates. They must either address the agent or post in a scope that receives every message. They cannot make explicit requests or stop Tickets.
+Хост распознаёт GitHub Apps, логины, заканчивающиеся на `[bot]`, и боты Feishu как боты. Источник может перечислить ботов, таких как `dependabot[bot]`, чьи сообщения могут стать предполагаемыми кандидатами. Они должны либо обращаться к агенту, либо публиковаться в области, которая получает каждое сообщение. Они не могут делать явные запросы или останавливать Тикеты.
 
-An automated reviewer using an ordinary account counts as a person to the host. Its comments reach subscribed Tickets and generate follow-up notices. Team prompt text must identify such accounts as automated reviewers.
+Автоматизированный ревьюер, использующий обычный аккаунт, для хоста считается человеком. Его комментарии достигают подписанных Тикетов и порождают уведомления о фоллоу-апах. Текст командного промпта должен обозначать такие аккаунты как автоматизированных ревьюеров.
 
-## Routing candidates
+## Маршрутизация кандидатов
 
-The main Session routes explicit candidates with `orchestrator_route`. One call can contain several accept, attach, stop or ignore decisions. Each item is processed independently: a refused item or a missing field does not prevent the others from running.
+Главная Сессия маршрутизирует явных кандидатов с помощью `orchestrator_route`. Один вызов может содержать несколько решений accept, attach, stop или ignore. Каждый элемент обрабатывается независимо: отклонённый элемент или отсутствующее поле не мешают выполнению остальных.
 
-An inferred candidate normally needs a full assessment. There is one shortcut: if its card clearly touches no enabled rule, such as plain chat or unrelated discussion, the main Session may ignore it directly. The Decision records `ignoredFromCard` to distinguish this from a rule assessment. The main Session reads the enabled rules in its Policy prompt section.
+Предполагаемый кандидат обычно требует полного анализа. Есть одно сокращение: если его карточка явно не затрагивает ни одного включённого правила, например обычный чат или не связанное обсуждение, главная Сессия может проигнорировать его напрямую. Решение фиксирует `ignoredFromCard`, чтобы отличить это от оценки по правилам. Главная Сессия читает включённые правила в своей секции промпта Policy.
 
-Accepting an inferred candidate always requires an assessment. Direct accept refuses a Trigger that the gate did not admit as explicit.
+Приём предполагаемого кандидата всегда требует анализа. Прямой accept отклоняет Триггер, который шлюз не допустил как явный.
 
-## Accept mode and rules
+## Режим приёма и правила
 
-The accept mode is part of the Policy:
+Режим приёма — часть Политики:
 
-| Mode | Effect |
+| Режим | Действие |
 | --- | --- |
-| `off` | Nothing inferred becomes a candidate, such as an unaddressed message, a bot's message or the follow-up of a person not on the list |
-| `observe` (default) | Inferred candidates are assessed; a positive assessment is recorded as ignore marked "would accept", and nothing is accepted |
-| `auto` | A positive assessment of an inferred candidate accepts it |
+| `off` | Ничто предполагаемое не становится кандидатом, например неадресованное сообщение, сообщение бота или фоллоу-ап человека не из списка |
+| `observe` (по умолчанию) | Предполагаемые кандидаты оцениваются; положительная оценка фиксируется как ignore с пометкой «would accept», и ничего не принимается |
+| `auto` | Положительная оценка предполагаемого кандидата принимает его |
 
-Explicit requests work in every mode. Start in `observe` and switch to `auto` after reviewing the recorded Decisions. Each assessment judges every enabled rule exactly once, whether it matches or not. A proactive accept requires at least one matching rule.
+Явные запросы работают в любом режиме. Начинайте в `observe` и переключайтесь на `auto` после проверки зафиксированных Решений. Каждая оценка судит каждое включённое правило ровно один раз, совпадает оно или нет. Проактивный приём требует хотя бы одного совпавшего правила.
 
-Each rule describes a kind of proactive work. The Ticket's Mandate records the matched rules, and its Executor receives their names and instructions.
+Каждое правило описывает вид проактивной работы. Мандат Тикета фиксирует совпавшие правила, а его Исполнитель получает их названия и инструкции.
 
-For that Ticket, a rule's process and communication requirements override the defaults. A silence rule can suppress an acknowledgement; a review rule can name the required reviewer and approval before merge. Requirements that apply to every Ticket belong in team prompt sections instead.
+Для этого Тикета требования правила к процессу и общению переопределяют значения по умолчанию. Правило тишины может подавить подтверждение; правило ревью может назвать требуемого ревьюера и одобрение перед слиянием. Требования, применимые к каждому Тикету, относятся к секциям командного промпта.
 
-## Policy version
+## Версия Политики
 
-Rules, accept mode and each Source's Policy form the Policy version. Every Mandate records the version under which it was accepted.
+Правила, режим приёма и Политика каждого Источника образуют версию Политики. Каждый Мандат фиксирует версию, под которой он был принят.
 
-A version change discards running Evals and queues their Triggers again. It also sends a policy-changed Input to each affected live Ticket. The Input explains whether:
+Смена версии отбрасывает выполняющиеся Оценки и снова ставит их Триггеры в очередь. Она также отправляет Input о смене политики каждому затронутому живому Тикету. Input объясняет, произошло ли одно из следующего:
 
-- a matched rule changed, including its new text, or no longer applies;
-- the requester may no longer start work; or
-- proactive work is no longer accepted, for example because the mode changed from `auto`.
+- совпавшее правило изменилось, включая его новый текст, или больше не применяется;
+- запрашивающий больше не может начинать работу; или
+- проактивная работа больше не принимается, например потому что режим сменился с `auto`.
 
-Unaffected Tickets receive no notice. The change does not immediately revoke live Tickets' Mandates.
+Незатронутые Тикеты не получают уведомления. Изменение немедленно не отзывает Мандаты живых Тикетов.
 
-Source configuration is separate from Policy. It controls what enters the system: which chats are read and whether a scope receives all messages or only mentions. A Mandate records its Source and receiving scope. Resuming needs the Source to still listen to the Thread, but does not require it to still receive every message there.
+Конфигурация Источника отделена от Политики. Она управляет тем, что входит в систему: какие чаты читаются и получает ли область все сообщения или только упоминания. Мандат фиксирует свой Источник и область получения. Возобновление требует, чтобы Источник всё ещё слушал Тред, но не требует, чтобы он всё ещё получал там каждое сообщение.
 
-Replies wait while their Source is off. They are dropped if the Source no longer listens to their destination.
+Ответы ждут, пока их Источник выключен. Они отбрасываются, если Источник больше не слушает их пункт назначения.
 
-A condition on what the Executor may do with its own result, such as when it may merge, does not decide who may authorize work. It is part of the agent's instructions, not of the Policy.
+Условие на то, что Исполнитель может делать с собственным результатом, например когда он может мерджить, не решает, кто может авторизовать работу. Оно — часть инструкций агента, а не Политики.
 
-## Resume and stop
+## Возобновление и остановка
 
-An ended Ticket keeps its Mandate. A person's message on one of its own Threads can resume the same work without a new Eval or Decision, regardless of who sent it. Bots and CI do not wake ended Tickets. The Executor decides whether the request fits the scope and ends the round if it does not.
+Завершённый Тикет сохраняет свой Мандат. Сообщение человека на одном из его собственных Тредов может возобновить ту же работу без новой Оценки или Решения, независимо от того, кто его отправил. Боты и CI не пробуждают завершённые Тикеты. Исполнитель решает, подходит ли запрос под область, и завершает раунд, если нет.
 
-Only three operations change a Mandate: accept creates it, a person's stop withdraws it, and failed revalidation revokes it. A Ticket stopped by a person stays ended and receives nothing more. Work requested there needs a new accept.
+Только три операции меняют Мандат: accept создаёт его, остановка человека отзывает его, а неудачная перепроверка отменяет его. Тикет, остановленный человеком, остаётся завершённым и больше ничего не получает. Запрошенная там работа требует нового приёма.
 
-### Revalidation before resume
+### Перепроверка перед возобновлением
 
-The Source must still listen to the original Thread. The remaining checks depend on the Mandate's basis:
+Источник всё ещё должен слушать исходный Тред. Остальные проверки зависят от основы Мандата:
 
-- An explicit follow-up Mandate passes.
-- An inferred Mandate needs `auto` mode and its matched rules still enabled.
-- A Mandate admitted by a table cell must still receive at least its original strength under today's table and sender membership. Removing a sender from the list can therefore revoke a Mandate accepted through the listed-sender cell.
-- A bot's Mandate requires that bot to remain on the Source's bot list. Inferred table and bot Mandates also need `auto` mode and enabled matched rules.
-- Other Mandates require the sender to remain on the Source's allowed list.
+- Мандат явного фоллоу-апа проходит.
+- Предполагаемый Мандат требует режима `auto` и чтобы его совпавшие правила всё ещё были включены.
+- Мандат, допущенный ячейкой таблицы, должен всё ещё получать по крайней мере свою исходную силу при сегодняшней таблице и членстве отправителя. Удаление отправителя из списка может поэтому отозвать Мандат, принятый через ячейку отправки из списка.
+- Мандат бота требует, чтобы этот бот оставался в списке ботов Источника. Предполагаемые Мандаты по таблице и по ботам также требуют режима `auto` и включённых совпавших правил.
+- Другие Мандаты требуют, чтобы отправитель оставался в списке разрешённых Источника.
 
-If revalidation fails, the Ticket stays ended and takes none of its waiting messages. Each message is treated as having reached no Ticket; if no other Ticket owns it, it goes to Eval. The main Session is not told it reached a worker. This also applies after a processing pause. Attaching to the Ticket is refused, and further work requires a new accept.
+Если перепроверка не удаётся, Тикет остаётся завершённым и не берёт ни одного из своих ожидающих сообщений. Каждое сообщение считается не достигшим ни одного Тикета; если им не владеет другой Тикет, оно идёт в Оценку. Главной Сессии не сообщается, что оно достигло worker. Это также применяется после паузы обработки. Прикрепление к Тикету отклоняется, а дальнейшая работа требует нового приёма.
 
-- **A person saying "stop" in a Thread is an ordinary Trigger,** and Eval decides stop. An Executor cannot declare that a person asked it to stop.
-- **Stop in the panel is a command.** It acts on the Ticket directly and is recorded as a manual stop.
-- **Waiting conditions belong to Sources.** A condition such as "no assignee for N hours" would be a Source that waits and checks again itself; Eval never waits.
+- **Человек, говорящий «stop» в Треде, — это обычный Триггер,** и Оценка решает остановку. Исполнитель не может заявить, что человек попросил его остановиться.
+- **Остановка на панели — это команда.** Она действует на Тикет напрямую и фиксируется как ручная остановка.
+- **Условия ожидания принадлежат Источникам.** Условие вроде «нет назначенного в течение N часов» было бы Источником, который ждёт и проверяет снова сам; Оценка никогда не ждёт.
 
-## When Eval does not finish
+## Когда Оценка не завершается
 
-The time limit starts when the candidate reaches the main Session. Time spent waiting for delivery does not count, and an undelivered candidate never expires.
+Лимит времени начинается, когда кандидат достигает главной Сессии. Время, потраченное на ожидание доставки, не учитывается, а недоставленный кандидат никогда не истекает.
 
-An expired Eval queues its Triggers for another attempt. After two consecutive retries, the third expiry records `unavailable`. An assessment failure also records `unavailable`; a later Trigger can start a new Eval. A Policy change or a decision made against an outdated Policy records `unavailable` and immediately queues the batch under the current version.
+Истёкшая Оценка ставит свои Триггеры в очередь для другой попытки. После двух последовательных повторов третье истечение фиксирует `unavailable`. Сбой оценки также фиксирует `unavailable`; более поздний Триггер может начать новую Оценку. Изменение Политики или решение, принятое против устаревшей Политики, фиксирует `unavailable` и немедленно ставит пакет в очередь под текущей версией.
 
-The `evals` health entry reports unresolved unavailable Decisions from the last hour. `scripts/dsh-superagent status` includes that error.
+Запись о здоровье `evals` сообщает о неразрешённых Решениях `unavailable` за последний час. `scripts/dsh-superagent status` включает эту ошибку.
 
-The panel asks for human attention only when the unavailable Decision is less than 24 hours old, is still the latest Decision on its Thread, has not been dismissed, and the Thread is neither queued nor evaluating. A person can evaluate the Trigger again or dismiss the problem.
+Панель просит о внимании человека только тогда, когда Решение `unavailable` младше 24 часов, всё ещё является последним Решением на своём Треде, не было снято, и Тред не в очереди и не оценивается. Человек может оценить Триггер снова или снять проблему.

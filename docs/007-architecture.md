@@ -1,10 +1,10 @@
-# 007 Architecture
+# 007 Архитектура
 
-This is the developer guide to the implementation. It maps the concepts in [001 Domain model](001-domain.md) through [006 Deployment](006-deployment.md) to classes, interfaces and files. Start with the runtime and Engine, then use the module and test tables as a code index.
+Это руководство разработчика по реализации. Оно сопоставляет понятия из [001 Domain model](001-domain.md) по [006 Deployment](006-deployment.md) с классами, интерфейсами и файлами. Начните с рантайма и Engine, затем используйте таблицы модулей и тестов как указатель по коду.
 
-## Core classes and glue
+## Основные классы и связующий код
 
-Core classes own domain concepts and external boundaries behind small interfaces. Glue translates tool arguments, HTTP requests, Source payloads and DeepSeek Harness events into calls to those classes, then turns results into cards, views and messages.
+Основные классы владеют доменными понятиями и внешними границами за небольшими интерфейсами. Связующий код переводит аргументы инструментов, HTTP-запросы, полезные данные Источников и события DeepSeek Harness в вызовы этих классов, а затем превращает результаты в карточки, представления и сообщения.
 
 ```mermaid
 flowchart TB
@@ -24,594 +24,594 @@ flowchart TB
   effects --> store
 ```
 
-`Runtime` (`src/app/runtime.ts`) constructs the application, supplies dependencies, and owns startup and shutdown. `Engine` constructs its own internal parts. The Executor and Assessor call back into the Engine, so Runtime gives them getters rather than requiring construction in a circular order.
+`Runtime` (`src/app/runtime.ts`) конструирует приложение, поставляет зависимости и владеет запуском и остановкой. `Engine` конструирует свои собственные внутренние части. Исполнитель и Оценивающий вызывают Engine по обратному вызову, поэтому Runtime даёт им геттеры, а не требует конструирования в циклическом порядке.
 
 ### Runtime
 
-`Runtime` is the composition root; it contains no domain rules. Its constructor locks the state directory, opens the Store and builds each component. If construction fails, it closes the Store and releases the lock.
+`Runtime` — это корень композиции; он не содержит доменных правил. Его конструктор блокирует каталог состояния, открывает Store и строит каждый компонент. Если конструирование не удаётся, он закрывает Store и снимает блокировку.
 
-Startup registers management routes and runs Setup. After setup resolves, it installs Session and Executor hooks, ensures the main Session exists, starts Policy syncs, resumes interrupted Assignments, and starts passes and effects. `ready` marks completion of startup.
+Запуск регистрирует маршруты управления и запускает Настройку. После того как настройка разрешилась, он устанавливает хуки Сессий и Исполнителей, убеждается в существовании основной Сессии, запускает синхронизации Политики, возобновляет прерванные Назначения и запускает проходы и эффекты. `ready` отмечает завершение запуска.
 
-Shutdown cancels turns, waits for passes, effects and agents, restores the process environment, closes the Store and releases the lock. Source plugins inject Runtime as the `orchestrator` service through the narrow `SourceHost` interface.
+Остановка отменяет ходы, ждёт проходы, эффекты и агентов, восстанавливает окружение процесса, закрывает Store и снимает блокировку. Плагины Источников внедряют Runtime как сервис `orchestrator` через узкий интерфейс `SourceHost`.
 
-| Part | Module | Does |
+| Часть | Модуль | Делает |
 | --- | --- | --- |
-| Setup | `src/app/setup.ts` | Resolves the repository and the accounts by probing their CLIs the way worker shells run them, writes and applies the workers' environment and command shims, and keeps the setup problems; Settings checks a changed account through it, and restarts through it, which runs setup again |
-| Passes | `src/app/passes.ts` | One pass at a time, every two seconds and whenever a command asks: the due effects, then `Engine.evaluateDue`; a Source's Trigger reaches the Engine through it |
-| Outbox | `src/app/outbox.ts` | The Engine's `Outbox` port, and the only writer of the receipts: `send` keeps a message's receipt and queues its `reply` effect in one transaction, and the effect's handler sends it through `SourceRegistry.send`; a message waits while its Source is off, and is dropped when the conversation is gone or not listened to |
-| Notices | `src/app/notices.ts` | Converts domain events and worker activity into main-Session messages. `eventNotice` handles domain notices; `reportRelay` forwards questions immediately, keeps ordinary progress on its Ticket, and relays other reports; `followupRelay` names the Tickets that own a human follow-up. Relays arriving during a turn are delivered together at its next step through the DeepSeek Harness inbox |
+| Setup | `src/app/setup.ts` | Разрешает репозиторий и аккаунты, проверяя их CLI так, как их запускают оболочки воркеров, записывает и применяет окружение и командные шимы воркеров и хранит проблемы настройки; Settings проверяет изменённый аккаунт через него и перезапускается через него, что снова запускает настройку |
+| Passes | `src/app/passes.ts` | Один проход за раз, каждые две секунды и всякий раз, когда просит команда: сначала просроченные эффекты, затем `Engine.evaluateDue`; Триггер Источника достигает Engine через него |
+| Outbox | `src/app/outbox.ts` | Порт `Outbox` Engine и единственный писатель квитанций: `send` хранит квитанцию сообщения и ставит в очередь его эффект `reply` в одной транзакции, а обработчик эффекта отправляет его через `SourceRegistry.send`; сообщение ждёт, пока его Источник выключен, и отбрасывается, когда беседа исчезла или не прослушивается |
+| Notices | `src/app/notices.ts` | Превращает доменные события и активность воркера в сообщения основной Сессии. `eventNotice` обрабатывает доменные уведомления; `reportRelay` немедленно пересылает вопросы, держит обычный прогресс на его Тикете и пересылает остальные отчёты; `followupRelay` называет Тикеты, владеющие человеческим фоллоу-апом. Пересылки, прибывающие во время хода, доставляются вместе на его следующем шаге через входящие DeepSeek Harness |
 
 ### Engine
 
-`Engine` (`src/core/engine.ts`) is the only writer of Triggers, Threads, Decisions, Tickets and Assignments. It receives these ports from `src/core/ports.ts`: `Repositories`, a current-Policy getter, `SourceScope`, `Assessor`, `Executor` and `Outbox`. Optional dependencies are `prepareTicket`, `now` and `emit`.
+`Engine` (`src/core/engine.ts`) — единственный писатель Триггеров, Тредов, Решений, Тикетов и Назначений. Он получает эти порты из `src/core/ports.ts`: `Repositories`, геттер текущей Политики, `SourceScope`, `Assessor`, `Executor` и `Outbox`. Опциональные зависимости — `prepareTicket`, `now` и `emit`.
 
-All Engine methods are synchronous. Each command changes its aggregates in one transaction. `evaluateDue` uses a separate transaction for each Eval or Ticket it changes. Ports enqueue external work inside the transaction; adapters perform it after commit. Invalid requests throw `UserError`.
+Все методы Engine синхронны. Каждая команда меняет свои агрегаты в одной транзакции. `evaluateDue` использует отдельную транзакцию для каждой Оценки или Тикета, которые он меняет. Порты ставят в очередь внешнюю работу внутри транзакции; адаптеры выполняют её после фиксации. Недопустимые запросы бросают `UserError`.
 
-The Engine exposes one entry point and delegates to five internal parts. It owns each command's transaction. Commands spanning parts, such as `attach`, `evaluateDue` and `policyChanged`, call the parts in sequence.
+Engine предоставляет одну точку входа и делегирует пяти внутренним частям. Он владеет транзакцией каждой команды. Команды, охватывающие части, такие как `attach`, `evaluateDue` и `policyChanged`, вызывают части последовательно.
 
-Each part extends `EnginePart` (`src/core/part.ts`), which provides options and shared reads. Dependencies between the parts flow in one direction:
+Каждая часть расширяет `EnginePart` (`src/core/part.ts`), который предоставляет опции и общие чтения. Зависимости между частями текут в одном направлении:
 
-| Part | Responsibility | Depends on |
+| Часть | Ответственность | Зависит от |
 | --- | --- | --- |
-| `Intake` | A Source's Trigger: stored once with its disposition, recorded on its Threads and their correlations, fanned out to the subscribed Tickets and, unless it is a person's message that reached one, queued for Eval on its primary Thread | Tickets |
-| `Evals` | The Evals of Threads: batching, the gate's strength, actor and basis with the Trigger that gave them (`primary`), the deadline from the candidate's delivery and its shift by a pause, the requeue of an expired Eval, candidates, replays and hand-backs, the requeue on a Policy change, and the Decision each ends with: accept, stop, ignore or unavailable | Tickets |
-| `Tickets` | The Ticket lifecycle: creation from an accept with its Mandate, Subscriptions and first Assignment, the Threads it follows and their closes (`followsDone`), attached Threads and Threads followed for context, Inputs and notes, resume and the messages a resume refuses, retry, restart, stop and end, the Subscriptions it drops, and the notice of a Policy change to the Tickets it bears on | Replies |
-| `Assignments` | What the Executor and its workers report: an Assignment started, Inputs reached it or failed to, a restart interrupted it, and a worker's Report with its question for a person | Tickets, Replies |
-| `Replies` | Channel writes through the `Outbox`: the acknowledgement, the answer, the result and the attention message, each by the rule that allows it | Nothing |
+| `Intake` | Триггер Источника: сохраняется один раз со своим положением, записывается на свои Треды и их корреляции, раздаётся подписанным Тикетам и, если это не сообщение человека, достигшее одного из них, ставится в очередь на Оценку на своём основном Треде | Tickets |
+| `Evals` | Оценки Тредов: пакетирование, сила шлюза, действующее лицо и основание с давшим их Триггером (`primary`), дедлайн из доставки кандидата и его сдвиг при паузе, повторная постановка просроченной Оценки в очередь, кандидаты, повторы и возвраты, повторная постановка при изменении Политики и Решение, которым каждая заканчивается: принять, остановить, игнорировать или недоступно | Tickets |
+| `Tickets` | Жизненный цикл Тикета: создание из принятия с его Мандатом, Подписками и первым Назначением, Треды, за которыми он следует, и их закрытия (`followsDone`), присоединённые Треды и Треды, отслеживаемые для контекста, Входы и заметки, возобновление и сообщения, которые возобновление отклоняет, повтор, перезапуск, остановка и завершение, Подписки, которые он отбрасывает, и уведомление о изменении Политики Тикетам, которые оно затрагивает | Replies |
+| `Assignments` | Что сообщают Исполнитель и его воркеры: Назначение запущено, Входы достигли его или не достигли, перезапуск прервал его и Отчёт воркера с его вопросом к человеку | Tickets, Replies |
+| `Replies` | Записи в Канал через `Outbox`: подтверждение, ответ, результат и сообщение о внимании, каждое по правилу, которое его допускает | Nothing |
 
-Commands use imperative names such as `stopTicket`; facts reported by adapters use past-tense names such as `assignmentStarted`. The query `candidate` uses a noun.
+Команды используют императивные имена, например `stopTicket`; факты, сообщаемые адаптерами, используют имена в прошедшем времени, например `assignmentStarted`. Запрос `candidate` использует существительное.
 
-Callers receive only their role's `Pick` of the Engine: `EngineForSources`, `EngineForMainSession`, `EngineForPeople`, `EngineForSettings` or `EngineForExecutor`.
+Вызывающие получают только `Pick` Engine для своей роли: `EngineForSources`, `EngineForMainSession`, `EngineForPeople`, `EngineForSettings` или `EngineForExecutor`.
 
-| Role | Method | Effect |
+| Роль | Метод | Эффект |
 | --- | --- | --- |
-| Sources | `receive(trigger)` | Stores a Trigger once and answers `stored`, `duplicate`, or `filtered` when no Source receives it; fans it out to the Tickets subscribed to its Threads, where a person's message resumes an ended Ticket at once unless processing is paused, and queues it for Eval on its primary Thread, unless it is a person's message that reached a Ticket, which stays that Ticket's |
-| Sources | `bindThread(ticketId, thread, own)` | Makes an open Ticket follow one of the Source's Threads, such as a pull request's, `own` when the Ticket opened it; a closed Thread bound again is open again. The Threads' closes, not a `ready` Report, end the Ticket |
-| Sources | `threadClosed(thread, outcome, at)` | A Thread closed: each open Ticket that follows it records the close, and ends once it is done with the Threads it follows (`followsDone`): no Thread it opened is open, or, when it opened none, every Thread it follows closed. It ends `merged` or `closed` as the latest of those closes did, unless work resumed after the close has not reported `ready`, or its Executor took up, by acknowledging or answering it, a person's follow-up it decides after its latest Report other than `progress`, or the end of its last turn; a `dropped` Report then ends it as the close did |
-| Main Session | `candidate(triggerId)` | The Eval that holds a Trigger, as its assessor sees it |
-| Main Session | `candidateDelivered(evalId)` | The Eval's candidate reached the main Session: its deadline counts from now |
-| Main Session | `decide(triggerId, outcome)` | Records an Eval Decision, or a direct Decision for an explicit request. Accept creates the Ticket, Mandate, Assignment, Subscriptions and acknowledgement atomically. An inferred candidate ignored from its card records `ignoredFromCard` before the supplied reason. While `followupOwners` still owns a human follow-up, only stop is allowed |
-| Main Session | `attach(ticketId, triggerId, note?)` | Routes a Trigger to a Ticket it points at, whose Executor then decides it as a follow-up, and ends the Eval that holds it, whose other Triggers wait for a fresh Eval; an ended Ticket resumes under its Mandate at once unless processing is paused. A follow-up an Executor still decides is refused, as is one routed back to the Ticket that handed it back |
-| Main Session | `requestStatus(ticketId)` | Asks a waiting Executor Session for its status, and answers whether it asked |
-| Main Session | `note(ticketId, text)` | Gives a Ticket's Executor a fact from other work as a text Input, which grants nothing |
-| Main Session, Executor | `reply(request)` | Queues a message for the Channel its purpose names: `acknowledgement`, `answer`, `result` or `attention` |
-| People | `stopTicket(ticketId, reason?)` | A person's stop, which withdraws the Mandate |
-| People | `retryTicket(ticketId)` | Ends the stalled Assignment of a Ticket that waits for a person after a `failed` or `blocked` Report, or whose Input delivery failed (`canRetry`), and starts a new one |
-| People | `reevaluate(triggerId)` | Queues a stored Trigger for a fresh Eval |
-| People | `unsubscribe(thread)` | Drops every Subscription on a Thread, and the Tickets that followed it follow it no more; each keeps deciding the follow-ups it received there |
-| People | `dismiss(decisionId)` | Dismisses the problem an `unavailable` Decision shows, which the Decision records |
-| Executor | `assignmentStarted(ticketId, assignmentId)` | An Assignment runs; its waiting Inputs go out |
-| Executor | `inputsDelivered(ticketId, assignmentId, inputIds)` | Inputs reached the Assignment's Executor Session, where each waits for a step to take it |
-| Executor | `inputsRead(ticketId, inputIds)` | The Executor Session took the messages that carry these Inputs into its history (a `user/message` Session event), from which its model has them; a step that claimed them and was cancelled or failed before does not count. Each counts as read once a Report or the end of a turn follows, also after a restart, and its Ticket's end does not let go of it; an Input delivered before reads were recorded counts as read once a Report or the end of a turn followed its delivery |
-| Executor | `turnEnded(ticketId, assignmentId)` | A turn of the Executor Session ended, also after a Report, once nothing runs for it in the background or as it hands off to a person. What a step took before, it read (`inputsRead`) |
-| Executor | `deliveryFailed(ticketId, assignmentId, error)` | Delivering Inputs failed; the Ticket shows it until a delivery succeeds, a new Assignment starts or the Ticket ends |
-| Executor | `report(ticketId, report)` | Records a Report and its question for a person; `dropped` ends the Ticket, and `ready` completes one that follows no Thread, and ends one done with the Threads it follows as they ended |
-| Executor | `markUnrelated(ticketId, thread, reason)` | Drops only that Ticket's Subscription to an attached Thread it found unrelated, and hands back, with the reason, the follow-ups there that the Ticket decides |
-| Executor | `followForContext(ticketId, thread)` | Subscribes an open Ticket to a related Thread for context: its messages reach the Ticket but lend it no follow-up strength and do not resume it |
-| Executor | `handback(ticketId, triggerId, reason)` | Records that the Ticket hands back a Trigger that reached it, with the reason its candidate carries, and queues it for a fresh Eval once no other Ticket decides it, if this Ticket did; it answers whether it queued it. A Ticket hands back each Trigger once and keeps its Subscription |
-| Executor | `assignmentInterrupted(ticketId, assignmentId)` | An Assignment was running when the host stopped: one interrupted mid-work, or one that received an Input after its latest Report, starts again with a recovery note and the Inputs delivered to it that its Executor Session did not take, as a retry does; one that had reported since keeps its Session. The DshExecutor reports each at start (`resume`), oldest Ticket first, and queues again a launch that waits |
-| Passes | `evaluateDue()` | Unless processing is paused: starts the Evals of the Threads whose queued Triggers wait, one per Thread with the Triggers queued meanwhile as one batch; queues the Triggers of an Eval past its deadline again, twice in a row, and records it `unavailable` the third time; and resumes the ended Tickets a person's message reached during a pause, if their Mandates still hold. An Eval whose candidate has not reached the main Session does not expire. While processing is paused, no Eval expires, and once it resumes each deadline moves later by the pause's length |
-| Settings | `policyChanged(from, to, effects)` | Tells each live Ticket the change bears on how (`policyEffects` in `src/policy.ts`: a rule it was accepted under changed or no longer applies, its requester may no longer start work, or proactive work is no longer accepted), and restarts the Evals in progress under the new version |
+| Sources | `receive(trigger)` | Сохраняет Триггер один раз и отвечает `stored`, `duplicate` или `filtered`, когда его не принимает ни один Источник; раздаёт его Тикетам, подписанным на его Треды, где сообщение человека немедленно возобновляет завершённый Тикет, если обработка не приостановлена, и ставит его в очередь на Оценку на его основном Треде, если это не сообщение человека, достигшее Тикета, — то остаётся за этим Тикетом |
+| Sources | `bindThread(ticketId, thread, own)` | Заставляет открытый Тикет следовать за одним из Тредов Источника, например за pull request'ом, `own`, когда Тикет его открыл; закрытый Тред, привязанный снова, снова открыт. Закрытия Тредов, а не `ready`-Отчёт, завершают Тикет |
+| Sources | `threadClosed(thread, outcome, at)` | Тред закрыт: каждый открытый Тикет, следующий за ним, записывает закрытие и завершается, когда закончил с Тредами, за которыми следует (`followsDone`): ни один открытый им Тред не открыт, или, когда он не открыл ни одного, каждый Тред, за которым он следует, закрыт. Он завершается `merged` или `closed`, как завершилось последнее из этих закрытий, кроме случаев, когда возобновлённая после закрытия работа не сообщила `ready`, или его Исполнитель взял на себя — подтвердив или ответив на него — фоллоу-ап человека, который он решает после своего последнего Отчёта, отличного от `progress`, или конца его последнего хода; тогда Отчёт `dropped` завершает его так же, как закрытие |
+| Main Session | `candidate(triggerId)` | Оценка, удерживающая Триггер, как её видит её оценщик |
+| Main Session | `candidateDelivered(evalId)` | Кандидат Оценки достиг основной Сессии: её дедлайн отсчитывается от сейчас |
+| Main Session | `decide(triggerId, outcome)` | Записывает Решение Оценки или прямое Решение для явного запроса. Принятие создаёт Тикет, Мандат, Назначение, Подписки и подтверждение атомарно. Предполагаемый кандидат, игнорируемый из своей карточки, записывает `ignoredFromCard` перед указанной причиной. Пока `followupOwners` всё ещё владеет человеческим фоллоу-апом, допускается только остановка |
+| Main Session | `attach(ticketId, triggerId, note?)` | Направляет Триггер на Тикет, на который он указывает, чей Исполнитель затем решает его как фоллоу-ап, и завершает Оценку, удерживающую его, чьи другие Триггеры ждут свежую Оценку; завершённый Тикет немедленно возобновляется под своим Мандатом, если обработка не приостановлена. Фоллоу-ап, который всё ещё решает Исполнитель, отклоняется, как и направленный обратно на Тикет, который его вернул |
+| Main Session | `requestStatus(ticketId)` | Просит ожидающую Сессию Исполнителя о её статусе и отвечает, спросила ли она |
+| Main Session | `note(ticketId, text)` | Даёт Исполнителю Тикета факт из другой работы как текстовый Вход, который ничего не предоставляет |
+| Main Session, Executor | `reply(request)` | Ставит в очередь сообщение для Канала, который называет его цель: `acknowledgement`, `answer`, `result` или `attention` |
+| People | `stopTicket(ticketId, reason?)` | Остановка человеком, которая отзывает Мандат |
+| People | `retryTicket(ticketId)` | Завершает застопорившееся Назначение Тикета, который ждёт человека после Отчёта `failed` или `blocked` или чья доставка Входа не удалась (`canRetry`), и запускает новое |
+| People | `reevaluate(triggerId)` | Ставит сохранённый Триггер в очередь на свежую Оценку |
+| People | `unsubscribe(thread)` | Отбрасывает каждую Подписку на Треде, и Тикеты, следовавшие за ним, больше не следуют; каждый продолжает решать фоллоу-апы, полученные там |
+| People | `dismiss(decisionId)` | Отклоняет проблему, которую показывает Решение `unavailable`, что Решение записывает |
+| Executor | `assignmentStarted(ticketId, assignmentId)` | Назначение выполняется; его ожидающие Входы уходят |
+| Executor | `inputsDelivered(ticketId, assignmentId, inputIds)` | Входы достигли Сессии Исполнителя Назначения, где каждый ждёт шага, который его заберёт |
+| Executor | `inputsRead(ticketId, inputIds)` | Сессия Исполнителя забрала сообщения, несущие эти Входы, в свою историю (событие Сессии `user/message`), откуда их имеет её модель; шаг, который заявил их и был отменён или не удался до этого, не считается. Каждый считается прочитанным один раз, когда следует Отчёт или конец хода, также после перезапуска, и завершение его Тикета не отпускает его; Вход, доставленный до записи чтений, считается прочитанным, когда Отчёт или конец хода последовал за его доставкой |
+| Executor | `turnEnded(ticketId, assignmentId)` | Ход Сессии Исполнителя завершился, также после Отчёта, когда для него ничего не работает в фоне или когда он передаёт работу человеку. Что шаг взял раньше, то он прочитал (`inputsRead`) |
+| Executor | `deliveryFailed(ticketId, assignmentId, error)` | Доставка Входов не удалась; Тикет показывает это, пока доставка не удастся, не начнётся новое Назначение или Тикет не завершится |
+| Executor | `report(ticketId, report)` | Записывает Отчёт и его вопрос к человеку; `dropped` завершает Тикет, а `ready` завершает тот, кто не следует ни за одним Тредом, и завершает тот, кто закончил с Тредами, за которыми следует, так, как они завершились |
+| Executor | `markUnrelated(ticketId, thread, reason)` | Отбрасывает только Подписку этого Тикета на присоединённый Тред, который он счёл нерелевантным, и возвращает, с причиной, фоллоу-апы там, которые решает этот Тикет |
+| Executor | `followForContext(ticketId, thread)` | Подписывает открытый Тикет на связанный Тред для контекста: его сообщения достигают Тикета, но не дают ему силы фоллоу-апа и не возобновляют его |
+| Executor | `handback(ticketId, triggerId, reason)` | Записывает, что Тикет возвращает Триггер, который достиг его, с причиной, которую несёт его кандидат, и ставит его в очередь на свежую Оценку, когда ни один другой Тикет его не решает, если этот решал; он отвечает, поставил ли в очередь. Тикет возвращает каждый Триггер один раз и сохраняет свою Подписку |
+| Executor | `assignmentInterrupted(ticketId, assignmentId)` | Назначение выполнялось, когда хост остановился: прерванное в середине работы, или получившее Вход после своего последнего Отчёта, запускается снова с заметкой о восстановлении и Входами, доставленными ему, которые его Сессия Исполнителя не забрала, как делает повтор; то, что отчиталось с тех пор, сохраняет свою Сессию. DshExecutor сообщает о каждом при запуске (`resume`), начиная с самого старого Тикета, и снова ставит в очередь запуск, который ждёт |
+| Passes | `evaluateDue()` | Если обработка не приостановлена: запускает Оценки Тредов, чьи поставленные в очередь Триггеры ждут, по одной на Тред, с поставленными тем временем Триггерами как одним пакетом; снова ставит в очередь Триггеры Оценки, просрочившей дедлайн, дважды подряд, и на третий раз записывает её `unavailable`; и возобновляет завершённые Тикеты, которых сообщение человека достигло во время паузы, если их Мандаты всё ещё действуют. Оценка, чей кандидат не достиг основной Сессии, не просрочивается. Пока обработка приостановлена, ни одна Оценка не просрочивается, а как только она возобновляется, каждый дедлайн сдвигается позже на длину паузы |
+| Settings | `policyChanged(from, to, effects)` | Сообщает каждому живому Тикету, которого затрагивает изменение, каким образом (`policyEffects` в `src/policy.ts`: правило, под которым он был принят, изменилось или больше не применяется, его запрашивающий больше не может начинать работу, или проактивная работа больше не принимается), и перезапускает Оценки в процессе под новой версией |
 
-The Engine keeps batching, authorization, fan-out, resume and attention lifecycle rules private. Several shared predicates make these rules consistent:
+Engine держит правила пакетирования, авторизации, раздачи, возобновления и жизненного цикла внимания приватными. Несколько общих предикатов делают эти правила согласованными:
 
-- `waitsForPerson` (`src/core/model.ts`): the latest Assignment reported `blocked` or `failed`, and no human message has arrived since. Automatic Inputs and failed launches remain held while this is true.
-- `followupOwners`: the Tickets still responsible for a human follow-up received on their own Threads. A Ticket can be live or ended without a human stop and waiting to resume. Handing back the message ends that ownership.
-- `settled`: a Decision resolved the request; stop, unavailable, routed and refused-stop Decisions do not count.
-- `ticketStage` (`src/core/stage.ts`): implements the stage table in [003 Execution](003-execution.md).
+- `waitsForPerson` (`src/core/model.ts`): последнее Назначение сообщило `blocked` или `failed`, и с тех пор не приходило человеческое сообщение. Автоматические Входы и неудавшиеся запуски остаются удерживаемыми, пока это верно.
+- `followupOwners`: Тикеты, всё ещё ответственные за человеческий фоллоу-ап, полученный на их собственных Тредах. Тикет может быть жив или завершён без человеческой остановки и ожидать возобновления. Возврат сообщения завершает эту ответственность.
+- `settled`: Решение разрешило запрос; Решения stop, unavailable, routed и refused-stop не считаются.
+- `ticketStage` (`src/core/stage.ts`): реализует таблицу стадий из [003 Execution](003-execution.md).
 
-When a Ticket ends, unread follow-ups return to Eval unless another Ticket still owns them or another disposition settled them. Acknowledged, answered and handed-back messages are excluded. For older records without acknowledgement dispositions, the outbox receipt supplies that fact. A final Report also covers messages waiting when the Assignment began, including the message that resumed it. The message that stopped a Ticket is not automatically re-evaluated.
+Когда Тикет завершается, непрочитанные фоллоу-апы возвращаются на Оценку, если другой Тикет всё ещё не владеет ими или другое положение не разрешило их. Подтверждённые, отвеченные и возвращённые сообщения исключаются. Для старых записей без положений подтверждения факт даёт квитанция аутбокса. Финальный Отчёт также покрывает сообщения, ожидавшие на момент начала Назначения, включая сообщение, которое его возобновило. Сообщение, остановившее Тикет, не переоценивается автоматически.
 
-After a change, the Engine emits an event from `DomainEvents` in `src/core/ports.ts`:
+После изменения Engine порождает событие из `DomainEvents` в `src/core/ports.ts`:
 
-`trigger.received`, `eval.started`, `decision.recorded`, `ticket.created`, `ticket.resumed`, `ticket.ended`, `assignment.started`, `assignment.ended`, `thread.subscribed`, `thread.unsubscribed`, `trigger.requeued`, or `policy.changed`.
+`trigger.received`, `eval.started`, `decision.recorded`, `ticket.created`, `ticket.resumed`, `ticket.ended`, `assignment.started`, `assignment.ended`, `thread.subscribed`, `thread.unsubscribed`, `trigger.requeued` или `policy.changed`.
 
-Runtime turns `ticket.ended`, `trigger.requeued` and `thread.unsubscribed` into notices. A human `trigger.received` delivered to Tickets becomes a follow-up relay. `pullEndNotices` sends one chat notice, using a stable id, when a Ticket ends merged or closed. Other events currently have no consumer.
+Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsubscribed` в уведомления. Человеческий `trigger.received`, доставленный Тикетам, становится пересылкой фоллоу-апа. `pullEndNotices` отправляет одно уведомление в чат, используя стабильный id, когда Тикет завершается merged или closed. У других событий в настоящее время нет потребителя.
 
 ### Model
 
-`src/core/model.ts` holds the domain types, and `src/core/stage.ts` the Ticket stages. A Decision records why as `reason`, a list of `Reason`s (`src/core/reasons.ts`): each a `code` with its `values` and, for one Trigger of a batch, its `triggerId`.
+`src/core/model.ts` хранит доменные типы, а `src/core/stage.ts` — стадии Тикета. Решение записывает причину как `reason`, список `Reason` (`src/core/reasons.ts`): каждый со `code` и его `values` и, для одного Триггера пакета, его `triggerId`.
 
-The core's codes, such as `timeout`, `policyChanged`, `routed` and `startedTicket`, are `REASONS`, with the English that agents read through `reasonText`; a gate or a Source scope gives its own, such as `not_a_member`; and `said` carries words an assessor or a person wrote. The panel words each code by `reason.<code>`, and a Trigger a Source filtered records the Source's code the same way.
+Коды ядра, такие как `timeout`, `policyChanged`, `routed` и `startedTicket`, — это `REASONS`, с английским текстом, который агенты читают через `reasonText`; шлюз или область Источника даёт свои собственные, например `not_a_member`; а `said` несёт слова, которые написал оценщик или человек. Панель формулирует каждый код через `reason.<code>`, а Триггер, отфильтрованный Источником, записывает код Источника тем же способом.
 
-A Ticket keeps each fact once. It is open while it has no `ended`, which records when, by whom, why and with what outcome it ended; what it last said is its latest Assignment Report (`latestReport`); and its Executor Session is named after it (`workerSessionId` in `src/executor/dsh.ts`).
+Тикет хранит каждый факт один раз. Он открыт, пока у него нет `ended`, который записывает, когда, кем, почему и с каким исходом он завершился; то, что он сказал последним, — это его последний Отчёт Назначения (`latestReport`); а его Сессия Исполнителя названа по нему (`workerSessionId` в `src/executor/dsh.ts`).
 
-Its fields are typed: `origin`, the admissible Trigger that gave its Eval's batch its strength and the batch itself (`triggerId`, `triggerIds`); `execution`, what the Executor chose (`name`, `directory` and `assignment`); `delivery`, the last failed Input delivery (`error`, `at`), until a delivery succeeds, a new Assignment starts or the Ticket ends; and `follows`, the Threads a Source made it follow, each `{thread, own, closed?}`: `own` when the Ticket opened it, and `closed` with `at` and `outcome` once it closed. Tickets alone writes `follows`; the GitHub Source reads its pull requests with `pullsOf` and `pullOf` (`src/sources/github-pull.ts`).
+Его поля типизированы: `origin`, допустимый Триггер, давший пакету его Оценки силу, и сам пакет (`triggerId`, `triggerIds`); `execution`, что выбрал Исполнитель (`name`, `directory` и `assignment`); `delivery`, последняя неудавшаяся доставка Входа (`error`, `at`), пока доставка не удастся, не начнётся новое Назначение или Тикет не завершится; и `follows`, Треды, за которыми Источник заставил его следовать, каждый `{thread, own, closed?}`: `own`, когда Тикет его открыл, и `closed` с `at` и `outcome`, как только он закрылся. Только Tickets пишет `follows`; Источник GitHub читает свои pull request'ы через `pullsOf` и `pullOf` (`src/sources/github-pull.ts`).
 
-An Input that carries a Trigger records whether a person wrote it, which `waitsForPerson` reads. A Thread also lists in `context` the subscribed Tickets that follow it only for context, and counts in `expired` the Evals of its queued Triggers that expired in a row; an Evaluation records its `primary` Trigger and when its candidate was `delivered`.
+Вход, несущий Триггер, записывает, написал ли его человек, что читает `waitsForPerson`. Тред также перечисляет в `context` подписанные Тикеты, следующие за ним только для контекста, и считает в `expired` Оценки своих поставленных в очередь Триггеров, просрочившиеся подряд; Оценка записывает свой `primary` Триггер и время, когда её кандидат был `delivered`.
 
-A Trigger's disposition records the Tickets it reached, by fan-out or attachment, a person's requeue, each Ticket that handed it back, with the reason, and each Ticket whose Executor acknowledged or answered it.
+Положение Триггера записывает Тикеты, которых он достиг, по раздаче или присоединению, повторную постановку человеком, каждый Тикет, который его вернул, с причиной, и каждый Тикет, чей Исполнитель подтвердил или ответил на него.
 
-A Mandate's `basis` (`MandateBasis`) records how the gate admitted its Trigger. Revalidation reads the receiving `source`, `scope` and `row`, the listed `sender`, matched `rules`, and `via`:
+`basis` Мандата (`MandateBasis`) записывает, как шлюз допустил его Триггер. Перепроверка читает принимающий `source`, `scope` и `row`, перечисленного `sender`, совпавшие `rules` и `via`:
 
-| `via` | Admission basis |
+| `via` | Основание приёма |
 | --- | --- |
-| `addressed` | An allowed sender addressed the agent |
-| `followup` | A message arrived on a Thread with Tickets |
-| `admission` | An admission-table cell; `observation` marks an inferred candidate |
-| `bot` | A listed bot produced an inferred candidate |
+| `addressed` | Разрешённый отправитель обратился к агенту |
+| `followup` | Сообщение пришло на Тред с Тикетами |
+| `admission` | Ячейка таблицы приёма; `observation` отмечает предполагаемого кандидата |
+| `bot` | Перечисленный бот произвёл предполагаемого кандидата |
 
-Trigger and Thread `meta` belong to the Source. The core does not interpret them.
+`meta` Триггера и Треда принадлежат Источнику. Ядро их не интерпретирует.
 
 ### Policy
 
-`src/policy.ts` defines settings schemas, authorization and assessment rules. `settingsPolicy(settings, scope)` returns a fresh, stateless `Policy` on each use:
+`src/policy.ts` определяет схемы настроек, правила авторизации и оценки. `settingsPolicy(settings, scope)` возвращает свежую, без состояния, `Policy` при каждом использовании:
 
-- `version`, `paused` and `evalTimeoutMs` describe its current state.
-- `gate(trigger, thread, tickets)` returns admission strength and basis.
-- `revalidate(mandate)` checks whether an existing Mandate still holds.
-- `admitsInferred(rules)` permits proactive acceptance only in auto mode with enabled matching rules.
+- `version`, `paused` и `evalTimeoutMs` описывают её текущее состояние.
+- `gate(trigger, thread, tickets)` возвращает силу и основание приёма.
+- `revalidate(mandate)` проверяет, всё ли ещё действует существующий Мандат.
+- `admitsInferred(rules)` разрешает проактивное принятие только в автоматическом режиме с включёнными правилами сопоставления.
 
-`assessmentOutcome(assessment, settings, strength)` converts the model's assessment to an Engine outcome. It requires a judgement for every enabled rule, settled direction, a matching rule and evidence of intent. Outside auto mode, an inferred accept becomes a “would accept” record.
+`assessmentOutcome(assessment, settings, strength)` превращает оценку модели в исход Engine. Она требует суждения по каждому включённому правилу, установившегося направления, совпавшего правила и свидетельства намерения. Вне автоматического режима предполагаемое принятие становится записью «would accept».
 
-`policyEffects(tickets, old, now, scope)` identifies which open Tickets a change affects and how. `Engine.policyChanged` notifies only those Tickets. `policyVersion` hashes rules, accept mode and the Sources' Policy parts, including bot lists.
+`policyEffects(tickets, old, now, scope)` определяет, какие открытые Тикеты затрагивает изменение и каким образом. `Engine.policyChanged` уведомляет только эти Тикеты. `policyVersion` хеширует правила, режим принятия и части Политики Источников, включая списки ботов.
 
 ### Store
 
-`Store` (`src/app/store.ts`) owns one SQLite database. Runtime acquires the directory lock before opening it, preventing a second process from migrating or writing the same state.
+`Store` (`src/app/store.ts`) владеет одной базой данных SQLite. Runtime захватывает блокировку каталога перед её открытием, не давая второму процессу мигрировать или писать то же состояние.
 
-Its interfaces are grouped by purpose:
+Его интерфейсы сгруппированы по назначению:
 
-- **Domain repositories:** `atomic`, plus `triggers`, `threads`, `tickets` and `decisions`, each with `get`, `save` and list queries. Indexed working sets are `threads.active()`, `tickets.open()`, `tickets.active()` and `read.subscribedThreads`.
-- **Read queries:** `read` serves views, tools and Source polls through methods such as `threadTriggers`, `triggerStats`, `search` and `droppedReplies`. These methods never write.
-- **Source metadata:** `threads.describe` and `threads.patchMeta` update Source-owned Thread metadata.
-- **Settings:** `settings`, `saveSettings`, `blockRevision` and `settingsHistory`. Settings and prompts use numbered `Versions` (`src/app/versions.ts`).
-- **Outbox receipts:** `replyStatus` and `receipts`, written only by Outbox. Receipt operations are `get`, `waiting`, `behind`, `add`, `settle` and `withdraw`. `behind` checks whether an earlier message for the same Ticket and conversation is waiting with fewer than three failures. A withdrawn message settles with `channelGone` or `channelIgnored`. Read queries expose failed and dropped replies through `failingReplies`, `droppedReplies` and `droppedSince`.
-- **Typed key-value records:** `get`, `set`, `delete` and `keys`, using entries from `KV`.
+- **Доменные репозитории:** `atomic`, плюс `triggers`, `threads`, `tickets` и `decisions`, каждый с `get`, `save` и списко-запросами. Индексированные рабочие наборы — `threads.active()`, `tickets.open()`, `tickets.active()` и `read.subscribedThreads`.
+- **Запросы чтения:** `read` обслуживает представления, инструменты и опросы Источников через методы, такие как `threadTriggers`, `triggerStats`, `search` и `droppedReplies`. Эти методы никогда не пишут.
+- **Метаданные Источника:** `threads.describe` и `threads.patchMeta` обновляют принадлежащие Источнику метаданные Треда.
+- **Настройки:** `settings`, `saveSettings`, `blockRevision` и `settingsHistory`. Настройки и промпты используют нумерованные `Versions` (`src/app/versions.ts`).
+- **Квитанции аутбокса:** `replyStatus` и `receipts`, пишутся только Outbox. Операции квитанций — `get`, `waiting`, `behind`, `add`, `settle` и `withdraw`. `behind` проверяет, ждёт ли более раннее сообщение для того же Тикета и беседы с менее чем тремя неудачами. Отозванное сообщение завершается с `channelGone` или `channelIgnored`. Запросы чтения показывают неудавшиеся и отброшенные ответы через `failingReplies`, `droppedReplies` и `droppedSince`.
+- **Типизированные записи ключ-значение:** `get`, `set`, `delete` и `keys`, используя записи из `KV`.
 
-`afterCommit` runs an action only after the transaction commits, never after rollback. Runtime reads records in their stored shape; the schema 11 migration converts older supported records at startup.
+`afterCommit` выполняет действие только после фиксации транзакции, никогда после отката. Runtime читает записи в их сохранённой форме; миграция схемы 11 преобразует старые поддерживаемые записи при запуске.
 
 ### Effects
 
-`Effects` (`src/app/effects.ts`) is the durable side-effect queue. A command calls `enqueue(kind, key, payload)` inside its transaction; execution begins only after commit.
+`Effects` (`src/app/effects.ts`) — это долговечная очередь побочных эффектов. Команда вызывает `enqueue(kind, key, payload)` внутри своей транзакции; выполнение начинается только после фиксации.
 
-Each kind/key pair has one row. Enqueuing the same waiting key replaces its payload and makes it due immediately without changing queue order. `handle(kind, run, options)` registers one handler per kind. It processes due rows oldest first, up to the concurrency limit.
+Каждая пара kind/key имеет одну строку. Постановка в очередь того же ожидающего ключа заменяет его полезную нагрузку и делает его просроченным немедленно, не меняя порядок очереди. `handle(kind, run, options)` регистрирует один обработчик на kind. Он обрабатывает просроченные строки, начиная со старейших, до предела параллелизма.
 
-Failures retry with exponential backoff. Throwing `Later` defers work without counting a failure, for example when no worker slot is available. `start` begins processing after setup, `drain` stops it during shutdown while preserving pending rows, and `pending`/`idle` expose queue state.
+Неудачи повторяются с экспоненциальной отсрочкой. Бросок `Later` откладывает работу, не считая неудачу, например когда нет свободного слота воркера. `start` начинает обработку после настройки, `drain` останавливает её при завершении работы, сохраняя ожидающие строки, а `pending`/`idle` показывают состояние очереди.
 
-| Kind | Handler | Does | At once | Retry |
+| Kind | Обработчик | Делает | За раз | Повтор |
 | --- | --- | --- | --- | --- |
-| `assessment` | MasterAssessor | Steers an Eval's candidate card into the main Session's turn, then tells the Engine it was delivered, which starts the Eval's deadline | 4, none while paused | 2 s doubling to 60 s |
-| `launch` | DshExecutor | Launches a pending Assignment: prepare command, Executor Session, assignment message | The free worker slots, none while paused | A passing failure of the model provider or the network runs again after 5 s doubling to 300 s, three times; any other failure, and a failed prepare command, fails its Ticket. One held by a pause or by full worker slots tries again after 5 s |
-| `delivery` | DshExecutor | Hands a Ticket's waiting Inputs to its running Assignment, in order | 4, none while paused | 2 s doubling to 60 s; one that waits for a worker slot tries again after 2 s |
-| `relay` | Sessions | Steers a worker's report or question, or a person's follow-up, into the main Session's turn | 1, in queue order | 2 s doubling to 60 s |
-| `notice` | Sessions | Injects a notice into the main Session without waking it | 1, in queue order | 2 s doubling to 60 s |
-| `reply` | Outbox | Sends a message for a Channel through its Source, after the earlier messages of its Ticket to its conversation that have not failed three times; withdrawing the message cancels it | 1, none while paused | 5 s doubling to 300 s; one whose Source is off, or behind an earlier message, tries again after 5 s |
+| `assessment` | MasterAssessor | Направляет карточку кандидата Оценки в ход основной Сессии, затем сообщает Engine, что он доставлен, что запускает дедлайн Оценки | 4, ни одного при паузе | 2 с, удваиваясь до 60 с |
+| `launch` | DshExecutor | Запускает ожидающее Назначение: команда подготовки, Сессия Исполнителя, сообщение назначения | Свободные слоты воркеров, ни одного при паузе | Преходящая неудача провайдера модели или сети повторяется через 5 с, удваиваясь до 300 с, три раза; любая другая неудача, и неудавшаяся команда подготовки, приводит к неудаче Тикета. Удерживаемое паузой или полными слотами воркеров повторяется через 5 с |
+| `delivery` | DshExecutor | Передаёт ожидающие Входы Тикета его выполняющемуся Назначению, по порядку | 4, ни одного при паузе | 2 с, удваиваясь до 60 с; тот, кто ждёт слот воркера, повторяется через 2 с |
+| `relay` | Sessions | Направляет отчёт или вопрос воркера, или фоллоу-ап человека, в ход основной Сессии | 1, в порядке очереди | 2 с, удваиваясь до 60 с |
+| `notice` | Sessions | Внедряет уведомление в основную Сессию, не пробуждая её | 1, в порядке очереди | 2 с, удваиваясь до 60 с |
+| `reply` | Outbox | Отправляет сообщение для Канала через его Источник, после более ранних сообщений его Тикета в его беседу, которые не провалились три раза; отзыв сообщения отменяет его | 1, ни одного при паузе | 5 с, удваиваясь до 300 с; тот, чей Источник выключен, или позади более раннего сообщения, повторяется через 5 с |
 
-Each kind has a health entry under its name. It reports an error once one of its effects failed three times in a row, except `delivery`, whose failures show on their Ticket instead. Relays keep their order, and so do notices; a failed one holds back the later ones of its kind.
+Каждый kind имеет запись здоровья под своим именем. Он сообщает об ошибке, когда один из его эффектов провалился три раза подряд, кроме `delivery`, чьи неудачи показываются на их Тикете. Пересылки сохраняют свой порядок, и уведомления тоже; неудавшаяся удерживает более поздние своего kind.
 
 ### Sources
 
-Sources extend the host through `SourceKind`, defined in `src/sources/kind.ts`. A kind declares its identity, title, description, configuration `schema` and `fields`, derived `facts`, and `health` entries. Optional behavior includes `scope`, a `channel` (`allowed`, `send`, `link`), `threadContext`, `find`, `policy`, `environment` and `refreshLabels`.
+Источники расширяют хост через `SourceKind`, определённый в `src/sources/kind.ts`. Кind объявляет свою идентичность, заголовок, описание, `schema` и `fields` конфигурации, производные `facts` и записи `health`. Опциональное поведение включает `scope`, `channel` (`allowed`, `send`, `link`), `threadContext`, `find`, `policy`, `environment` и `refreshLabels`.
 
-`SourceRegistry` (`registry.ts`) owns registered kinds and stored instances, and implements the Engine's `SourceScope`. Registration claims health entries on `HealthBoard`; duplicate claims and reserved `sync:` names are refused. A SourceContext writes only through its registration's claimed entries, so reports after unregistration do nothing.
+`SourceRegistry` (`registry.ts`) владеет зарегистрированными видами и сохранёнными экземплярами и реализует `SourceScope` Engine. Регистрация заявляет записи здоровья на `HealthBoard`; дублирующиеся заявки и зарезервированные имена `sync:` отклоняются. SourceContext пишет только через заявленные записи своей регистрации, поэтому отчёты после отмены регистрации ничего не делают.
 
-Registry configuration methods include `kind`, `instances`, `instance`, `validate`, `validatePolicy`, `policyPart`, `channelAllowed`, `declarations`, `environments`, `find` and `scope`. `find` asks each kind that supports search.
+Методы конфигурации реестра включают `kind`, `instances`, `instance`, `validate`, `validatePolicy`, `policyPart`, `channelAllowed`, `declarations`, `environments`, `find` и `scope`. `find` спрашивает каждый вид, поддерживающий поиск.
 
-Generic code accesses Source behavior through the registry. `send(message, commands)` calls the kind's Channel and returns `sent`, `gone` or `waiting` if the kind is not installed. `link` resolves its Channel link. `threadContext` pairs a kind's reader with its configuration, or returns nothing when the kind has no reader. Invalid stored configuration disables the instance.
+Общий код получает доступ к поведению Источника через реестр. `send(message, commands)` вызывает Канал вида и возвращает `sent`, `gone` или `waiting`, если вид не установлен. `link` разрешает ссылку его Канала. `threadContext` сопрягает читателя вида с его конфигурацией или ничего не возвращает, когда у вида нет читателя. Недопустимая сохранённая конфигурация отключает экземпляр.
 
-Plugins receive `SourceHost`: the registry and `context(kind)`. The kind itself uses a narrower `SourceContext`, built by `sourceContextOf` in `src/app/source-context.ts`.
+Плагины получают `SourceHost`: реестр и `context(kind)`. Сам вид использует более узкий `SourceContext`, построенный через `sourceContextOf` в `src/app/source-context.ts`.
 
-That context supplies deployment and commands, setup readiness (`ready`, `configured`, `problem`), configuration, `receive`, `atomic`, and typed `state`. It also exposes Thread reads and metadata writes, Ticket reads and binding/closure commands, Trigger reads, `notify` through Outbox, and `report` for declared health entries.
+Этот контекст поставляет развёртывание и команды, готовность настройки (`ready`, `configured`, `problem`), конфигурацию, `receive`, `atomic` и типизированное `state`. Он также даёт чтения Тредов и записи метаданных, чтения Тикетов и команды привязки/закрытия, чтения Триггеров, `notify` через Outbox и `report` для заявленных записей здоровья.
 
 ### DshExecutor
 
-`DshExecutor` (`src/executor/dsh.ts`) provides one Session and directory per Ticket. `start` and `deliver` enqueue `launch` and `delivery` effects. `stop` cancels the turn through `Store.afterCommit`, so a rolled-back end does not stop the worker.
+`DshExecutor` (`src/executor/dsh.ts`) предоставляет одну Сессию и каталог на Тикет. `start` и `deliver` ставят в очередь эффекты `launch` и `delivery`. `stop` отменяет ход через `Store.afterCommit`, так что откаченное завершение не останавливает воркера.
 
-`prepare(ticket, outcome)` supplies the Engine's `prepareTicket` hook: short name, directory and `ticketExecution` assignment text. `workerSessionId(ticket.id)` derives the Session id.
+`prepare(ticket, outcome)` поставляет хук `prepareTicket` Engine: короткое имя, каталог и текст назначения `ticketExecution`. `workerSessionId(ticket.id)` выводит id Сессии.
 
-`WorkerSlots` reserves capacity before a launch or a delivery that wakes an idle worker. A human message can use one slot beyond `maxWorkers`, and wakes have priority over launches. `activeCount` supplies panel load.
+`WorkerSlots` резервирует ёмкость перед запуском или доставкой, пробуждающей простаивающего воркера. Человеческое сообщение может использовать один слот сверх `maxWorkers`, а пробуждения имеют приоритет над запусками. `activeCount` поставляет нагрузку панели.
 
-Transient provider and network failures get three retries. Launches use effect backoff; failed turns receive continuation messages after 15, 30 and 60 seconds. `inputMessage` renders each Input from current Ticket state, and `mandateInstructions` adds the matched-rule limits for inferred work.
+Преходящие неудачи провайдера и сети получают три повторных попытки. Запуски используют отсрочку эффектов; неудавшиеся ходы получают сообщения о продолжении через 15, 30 и 60 секунд. `inputMessage` отображает каждый Вход из текущего состояния Тикета, а `mandateInstructions` добавляет ограничения совпавших правил для предполагаемой работы.
 
-`install` subscribes to Session events; `dispose` unsubscribes. A turn end normally reports waiting, except after readiness or while human action is required. Errors report failed. At startup, `resume` reports interrupted Assignments through `assignmentInterrupted` and requeues pending launches that do not wait for a person, oldest Ticket first.
+`install` подписывается на события Сессии; `dispose` отписывается. Конец хода обычно сообщает ожидание, кроме как после готовности или пока требуется действие человека. Ошибки сообщают неудачу. При запуске `resume` сообщает о прерванных Назначениях через `assignmentInterrupted` и снова ставит в очередь ожидающие запуски, которые не ждут человека, начиная с самого старого Тикета.
 
 ### MasterAssessor
 
-`MasterAssessor` (`src/app/assessment.ts`) lets the main Session assess proactive candidates. `request` queues an assessment effect; `release` drops cached state when its Eval ends.
+`MasterAssessor` (`src/app/assessment.ts`) позволяет основной Сессии оценивать проактивных кандидатов. `request` ставит эффект оценки в очередь; `release` отбрасывает кешированное состояние, когда её Оценка завершается.
 
-Its `context`, `read` and `decide` methods serve `orchestrator_eval`, `orchestrator_eval_read` and `orchestrator_eval_decide`. They provide bounded Thread context through `SourceRegistry.threadContext`, repository context, and decision submission. A kind without a context reader supplies only the Trigger and batch.
+Его методы `context`, `read` и `decide` обслуживают `orchestrator_eval`, `orchestrator_eval_read` и `orchestrator_eval_decide`. Они предоставляют ограниченный контекст Треда через `SourceRegistry.threadContext`, контекст репозитория и отправку решения. Вид без читателя контекста поставляет только Триггер и пакет.
 
-`assessmentOutcome` converts the model's answer for `Engine.decide`. Evals checks inferred acceptance against the current Policy again.
+`assessmentOutcome` превращает ответ модели для `Engine.decide`. Evals снова проверяет предполагаемое принятие против текущей Политики.
 
 ### Settings
 
-`Settings` (`src/app/settings.ts`) reads and writes revisioned settings blocks. `current` and `view` read them; `save(block, value, revision, origin)` validates a save; `pause(paused, origin)` changes the separate `paused` setting.
+`Settings` (`src/app/settings.ts`) читает и пишет версионированные блоки настроек. `current` и `view` читают их; `save(block, value, revision, origin)` проверяет сохранение; `pause(paused, origin)` меняет отдельную настройку `paused`.
 
-Every save declares its origin: `panel`, `tool` or `sync`. Only `panel` can change the execution environment or fields listed in `SETUP_FIELDS` (`src/deployment.ts`).
+Каждое сохранение объявляет своё происхождение: `panel`, `tool` или `sync`. Только `panel` может менять среду исполнения или поля, перечисленные в `SETUP_FIELDS` (`src/deployment.ts`).
 
-A Policy-version change calculates `policyEffects`, records which Tickets were notified, and calls `Engine.policyChanged`. `syncable` and `sync(id)` refresh a Source's Policy part. `refreshLabels(id)` refreshes display names.
+Изменение версии Политики вычисляет `policyEffects`, записывает, какие Тикеты были уведомлены, и вызывает `Engine.policyChanged`. `syncable` и `sync(id)` обновляют часть Политики Источника. `refreshLabels(id)` обновляет отображаемые имена.
 
 ### Prompts
 
-`Prompts` (`src/app/prompts.ts`) stores configurations as `Versions`. `current`, `version` and `history` read them; `validate`, `preview` and `save(value, baseRevision, source)` check and save them. `compose` and `skills` build Session text.
+`Prompts` (`src/app/prompts.ts`) хранит конфигурации как `Versions`. `current`, `version` и `history` читают их; `validate`, `preview` и `save(value, baseRevision, source)` проверяют и сохраняют их. `compose` и `skills` строят текст Сессии.
 
-`builtInParts` lists override keys, roles, default text and required template placeholders. Each override stores team `text` and a `base`: the `builtInBase` key of its original default. Saves preserve that default under `KV.prompts.builtIn`. `defaultChanged` then reports changed defaults, their old text when available, and removed parts.
+`builtInParts` перечисляет ключи переопределения, роли, текст по умолчанию и обязательные плейсхолдеры шаблона. Каждое переопределение хранит `text` команды и `base`: ключ `builtInBase` своего исходного значения по умолчанию. Сохранения сохраняют это значение по умолчанию под `KV.prompts.builtIn`. `defaultChanged` затем сообщает об изменённых значениях по умолчанию, их старом тексте, когда он доступен, и удалённых частях.
 
-Validation inherits an omitted base from the saved override, drops removed parts already present in saved data, and rejects blank text or other unknown keys. This allows the save tool to round-trip a configuration it read. `environmentSection` and `policySection` substitute template values once, using own keys only. Configurations without overrides use defaults.
+Проверка наследует пропущенный base от сохранённого переопределения, отбрасывает удалённые части, уже присутствующие в сохранённых данных, и отклоняет пустой текст или другие неизвестные ключи. Это позволяет инструменту сохранения делать круговой обход прочитанной конфигурации. `environmentSection` и `policySection` подставляют значения шаблона один раз, используя только собственные ключи. Конфигурации без переопределений используют значения по умолчанию.
 
 ### Sessions
 
-`Sessions` (`src/app/sessions.ts`) manages DeepSeek Harness Sessions for both roles. `ensure` creates a Session with its role's model. `install` follows agent events and registers prompts, skills and tools for managed Sessions.
+`Sessions` (`src/app/sessions.ts`) управляет Сессиями DeepSeek Harness для обеих ролей. `ensure` создаёт Сессию с моделью её роли. `install` следит за событиями агента и регистрирует промпты, навыки и инструменты для управляемых Сессий.
 
-`prompt` delivers once per request id. `relay` and `notify` enqueue main-Session messages handled by the `relay` and `notice` effects. `src/app/notices.ts` defines their content; `delivery` checks whether a message arrived.
+`prompt` доставляет один раз на id запроса. `relay` и `notify` ставят в очередь сообщения основной Сессии, обрабатываемые эффектами `relay` и `notice`. `src/app/notices.ts` определяет их содержание; `delivery` проверяет, пришло ли сообщение.
 
-Each model request binds the Session to the current prompt revision. The revisions it used are stored durably: `promptVersion` identifies the active one and `mayRead` restricts which versions a worker can inspect. Registrations are tracked in one map per agent.
+Каждый запрос модели привязывает Сессию к текущей ревизии промпта. Использованные ревизии хранятся долговечно: `promptVersion` определяет активную, а `mayRead` ограничивает, какие версии может просматривать воркер. Регистрации отслеживаются в одной карте на агента.
 
-`status` and `promptVersion` serve prompt pages. Saves go through `Prompts.save` and notify the main Session. `modelRetry` exposes model-budget retry state.
+`status` и `promptVersion` обслуживают страницы промптов. Сохранения идут через `Prompts.save` и уведомляют основную Сессию. `modelRetry` показывает состояние повторных попыток бюджета модели.
 
-### Glue
+### Связующий код
 
-| Glue | Translates |
+| Связующий код | Переводит |
 | --- | --- |
-| `src/app/runtime.ts` | The composition root: builds the parts with the interfaces they use, registers the routes and the Source host, and starts and stops dsh-superagent |
-| `src/app/notices.ts` | Domain events and worker reports into notices and relays for the main Session |
-| `src/app/tools/main.ts`, `src/app/tools/executor.ts` | Tool arguments of the main Session and the Executor Sessions into calls of the core classes, and their results into cards |
-| `src/app/http.ts`, `src/app/views/`, `src/app/api.ts` | HTTP requests into calls, and Store reads into the panel's views; `api.ts` types every route for the panel |
-| `src/app/resources.ts`, `src/app/links.ts`, `src/app/cards.ts` | Resource names into reads, source messages into links, records into compact cards for models |
-| `src/sources/github*.ts`, `src/sources/feishu*.ts`, `src/sources/poll.ts` | GitHub and Feishu payloads into Triggers and Thread facts, and messages into CLI calls |
-| `src/deployment.ts`, `src/setup.ts`, `src/infra/` | Setup probes and problems, CLI transport, the agent's process environment |
+| `src/app/runtime.ts` | Корень композиции: строит части с используемыми ими интерфейсами, регистрирует маршруты и хост Источника, запускает и останавливает dsh-superagent |
+| `src/app/notices.ts` | Доменные события и отчёты воркеров в уведомления и пересылки для основной Сессии |
+| `src/app/tools/main.ts`, `src/app/tools/executor.ts` | Аргументы инструментов основной Сессии и Сессий Исполнителей в вызовы основных классов, а их результаты в карточки |
+| `src/app/http.ts`, `src/app/views/`, `src/app/api.ts` | HTTP-запросы в вызовы, а чтения Store в представления панели; `api.ts` типизирует каждый маршрут для панели |
+| `src/app/resources.ts`, `src/app/links.ts`, `src/app/cards.ts` | Имена ресурсов в чтения, сообщения Источников в ссылки, записи в компактные карточки для моделей |
+| `src/sources/github*.ts`, `src/sources/feishu*.ts`, `src/sources/poll.ts` | Полезные данные GitHub и Feishu в Триггеры и факты Тредов, а сообщения в вызовы CLI |
+| `src/deployment.ts`, `src/setup.ts`, `src/infra/` | Проверки и проблемы настройки, транспорт CLI, окружение процесса агента |
 
-## Dependency rules
+## Правила зависимостей
 
-- **Explicit, narrow dependencies.** Each class receives an interface that names what it uses, mostly as `Pick` types of other classes: `ExecutorHost`, `AssessorHost`, `SessionsHost`, `SettingsHost`, `SetupHost`, `PassesHost` and `OutboxHost` for the core classes, and `HttpHost`, `MainToolsHost`, `ExecutorToolsHost`, `ResourceHost`, `LinkHost` and `SourceContextDeps` for the glue, with the Engine as the `Pick` of the role that calls it. The Runtime passes itself only behind such an interface. A Source plugin injects the `orchestrator` service, which its type names as a `SourceHost`: the registry and `context(kind)`; its kind's code sees only its `SourceContext`.
-- **What may import what.** `src/core` imports nothing outside itself apart from Node's hashing, and does no I/O. `src/sources` imports nothing from `src/app`. The panel imports only types from the host side, and the plain values of `src/admission.ts`, `src/limits.ts`, `src/setup.ts`, `src/navigation.ts`, `src/sources/host.ts`, `src/core/errors.ts`, `src/core/reasons.ts` and the filter lists of `src/app/api.ts`.
-- **One writer per state.** Each kind of state has one writer, and the others read it or ask that writer.
+- **Явные, узкие зависимости.** Каждый класс получает интерфейс, называющий то, что он использует, в основном как типы `Pick` других классов: `ExecutorHost`, `AssessorHost`, `SessionsHost`, `SettingsHost`, `SetupHost`, `PassesHost` и `OutboxHost` для основных классов, и `HttpHost`, `MainToolsHost`, `ExecutorToolsHost`, `ResourceHost`, `LinkHost` и `SourceContextDeps` для связующего кода, с Engine как `Pick` роли, которая его вызывает. Runtime передаёт себя только за таким интерфейсом. Плагин Источника внедряет сервис `orchestrator`, который его тип называет как `SourceHost`: реестр и `context(kind)`; код его вида видит только свой `SourceContext`.
+- **Что может импортировать что.** `src/core` не импортирует ничего вне себя, кроме хеширования Node, и не делает ввода-вывода. `src/sources` не импортирует ничего из `src/app`. Панель импортирует только типы со стороны хоста и простые значения `src/admission.ts`, `src/limits.ts`, `src/setup.ts`, `src/navigation.ts`, `src/sources/host.ts`, `src/core/errors.ts`, `src/core/reasons.ts` и списки фильтров `src/app/api.ts`.
+- **Один писатель на состояние.** Каждый вид состояния имеет одного писателя, а остальные читают его или просят этого писателя.
 
-  | State | Writer |
+  | Состояние | Писатель |
   | --- | --- |
-  | Triggers, Threads, Decisions, Tickets, Assignments | Engine |
-  | A Source's read positions, and the meta it keeps on its Threads (`label`, `url`, `facts` and its own keys) | That Source, through `SourceContext` |
-  | Settings and their history | Settings |
-  | Prompt versions | Prompts |
-  | Effect rows | Effects |
-  | Outbox receipts | The Outbox: the Engine's messages and Sources' `notify` go through its `send`, and its `reply` effects mark them |
-  | A health entry | The part that claimed it on the `HealthBoard` (`src/infra/health.ts`), which refuses a second claim: `runtime` the Runtime, which Passes report through, `evals` the Runtime after each pass, `models` Sessions, each effect kind Effects, `worker` the DshExecutor, a Source kind's entries the SourceRegistry for that kind's Source, `sync:<id>` Settings |
+  | Триггеры, Треды, Решения, Тикеты, Назначения | Engine |
+  | Позиции чтения Источника и метаданные, которые он хранит на своих Тредах (`label`, `url`, `facts` и его собственные ключи) | Этот Источник, через `SourceContext` |
+  | Настройки и их история | Settings |
+  | Версии промптов | Prompts |
+  | Строки эффектов | Effects |
+  | Квитанции аутбокса | Outbox: сообщения Engine и `notify` Источников идут через его `send`, а его эффекты `reply` помечают их |
+  | Запись здоровья | Часть, заявившая её на `HealthBoard` (`src/infra/health.ts`), который отказывает второй заявке: `runtime` — Runtime, о котором Passes сообщает через, `evals` — Runtime после каждого прохода, `models` — Sessions, каждый kind эффекта — Effects, `worker` — DshExecutor, записи вида Источника — SourceRegistry для Источника этого вида, `sync:<id>` — Settings |
 
-  A Source changes a Ticket only through `SourceContext.tickets.bindThread` and `threadClosed`, which call the Engine.
-- **Requests and facts.** A method that asks for something is named by an imperative verb and its object, such as `stopTicket` or `bindThread`, and may be refused; a method that records what an adapter did is named in the past tense, such as `assignmentStarted` or `deliveryFailed`. Each host receives the Engine as the role type it needs.
-- **Typed fields, and Source data under the Source.** The code reads typed fields of Tickets and Mandates. A Source keeps nothing on a Ticket: which of its Threads a Ticket follows is the Ticket's `follows`, and what it keeps about a Trigger or a Thread is in their `meta`.
-- **Fixed refusals.** A refusal a person or an agent can cause is a `UserError(code, values)` from `USER_ERRORS` in `src/core/errors.ts`. The management API answers a `missing` code with 404 and the others with 400, and the panel words each code in its language. Setup problems are `SetupError` codes (`src/setup.ts`) and fixed health texts `HealthCode`s (`src/sources/host.ts`), worded the same way.
-### Source-specific dependencies
+  Источник меняет Тикет только через `SourceContext.tickets.bindThread` и `threadClosed`, которые вызывают Engine.
+- **Запросы и факты.** Метод, который что-то просит, назван императивным глаголом и своим объектом, например `stopTicket` или `bindThread`, и может быть отклонён; метод, записывающий то, что сделал адаптер, назван в прошедшем времени, например `assignmentStarted` или `deliveryFailed`. Каждый хост получает Engine как тип роли, который ему нужен.
+- **Типизированные поля и данные Источника под Источником.** Код читает типизированные поля Тикетов и Мандатов. Источник ничего не хранит на Тикете: за какими его Тредами следует Тикет — это `follows` Тикета, а то, что он хранит о Триггере или Треде, — в их `meta`.
+- **Фиксированные отказы.** Отказ, который может вызвать человек или агент, — это `UserError(code, values)` из `USER_ERRORS` в `src/core/errors.ts`. API управления отвечает на код `missing` статусом 404, а на остальные — 400, и панель формулирует каждый код на своём языке. Проблемы настройки — это коды `SetupError` (`src/setup.ts`) и фиксированные тексты здоровья `HealthCode` (`src/sources/host.ts`), сформулированные тем же способом.
+### Зависимости, специфичные для Источника
 
-Some generic modules still refer directly to GitHub or Feishu:
+Некоторые общие модули всё ещё обращаются напрямую к GitHub или Feishu:
 
-- Outbox applies the Feishu chat word limit.
-- `src/app/links.ts` resolves Feishu message links and `repliedTo`. It and Runtime read settings with `feishuSettings`.
-- `src/app/resources.ts` reads the `feishu/` and `github/` originals; `src/app/cards.ts` uses `pullOf` for Ticket cards.
-- Runtime sends `pullEndNotices` for merged or closed Tickets.
-- Executor tools bind reported pull requests with `readPull` and `claimPull`, using the GitHub context exposed by Runtime.
-- MasterAssessor reads repository files with `readRepositoryPath`.
-- Sessions and Prompts register built-in skills only for GitHub and Feishu. Migration converts their schema-10 records.
-- Setup probes only GitHub and Feishu account fields (`SETUP_FIELDS`). Only those Sources receive account setup problems through `SourceContext.problem`.
+- Outbox применяет лимит слов чата Feishu.
+- `src/app/links.ts` разрешает ссылки сообщений Feishu и `repliedTo`. Он и Runtime читают настройки через `feishuSettings`.
+- `src/app/resources.ts` читает оригиналы `feishu/` и `github/`; `src/app/cards.ts` использует `pullOf` для карточек Тикетов.
+- Runtime отправляет `pullEndNotices` для завершённых merged или closed Тикетов.
+- Инструменты Исполнителя привязывают сообщённые pull request'ы через `readPull` и `claimPull`, используя контекст GitHub, данный Runtime.
+- MasterAssessor читает файлы репозитория через `readRepositoryPath`.
+- Sessions и Prompts регистрируют встроенные навыки только для GitHub и Feishu. Миграция преобразует их записи схемы 10.
+- Настройка проверяет только поля аккаунтов GitHub и Feishu (`SETUP_FIELDS`). Только эти Источники получают проблемы настройки аккаунтов через `SourceContext.problem`.
 
 
 ## Modules
 
-| Path | Responsibility |
+| Путь | Ответственность |
 | --- | --- |
-| `src/index.ts` | The main plugin entry: reads the machine settings, starts the Runtime, and gives it the restart that a save of a Source's account uses |
-| `src/deployment.ts` | The plugin `Config` and `Machine`; `resolveDeployment` and `resolveFeishuBot` read the repository and the accounts from the Source settings, each CLI run as Executor shells run it; `SETUP_FIELDS` lists the Source fields setup reads. The code names no person, account or organization |
-| `src/setup.ts` | Setup problems: `SetupError`, with a code, the place that fixes it and the English text the log, the main Session and the panel share |
-| `src/policy.ts` | The Policy: the settings schemas by block, the Policy version, the gate and Mandate revalidation |
-| `src/admission.ts` | The admission table's values, each cell's options and defaults, shared with the panel |
-| `src/limits.ts` | The limits of the values a person sets, which the settings schemas check and the panel's fields offer |
-| `src/kv.ts` | `KV`: every family of `kv` records with its key, its value's type and its owner, and the `Key` and `Family` types the Store and `SourceContext.state` take |
-| `src/navigation.ts` | Opens a DeepSeek Harness Session from the panel once the host's catalog lists it |
-| `src/core/model.ts` | The domain types, among them the typed Ticket and `MandateBasis`, with `threadKey`, `ticketOutcome`, `reached`, `followupOwners`, `settled`, `waitsForPerson`, `liveTicket`, `runningAssignment`, `latestAssignment` and `latestReport` |
-| `src/core/ports.ts` | The ports: `Repositories`, `Policy`, `SourceScope`, `Assessor`, `Executor`, `Outbox`, and the domain events |
-| `src/core/engine.ts` | The Engine, the core's entry point, and the role interfaces `EngineForSources`, `EngineForMainSession`, `EngineForPeople`, `EngineForSettings` and `EngineForExecutor` |
-| `src/core/part.ts` | `EnginePart`, the base of the Engine's parts, and `EngineOptions` |
-| `src/core/intake.ts` | `Intake`: Triggers from Sources, to their Tickets and, unless a person's message reached one, to Eval |
-| `src/core/evals.ts` | `Evals`: the Evals of Threads and their Decisions |
-| `src/core/tickets.ts` | `Tickets`: the Ticket lifecycle, the Threads a Ticket follows, Subscriptions and Inputs |
-| `src/core/assignments.ts` | `Assignments`: the Executor's facts and its workers' Reports |
-| `src/core/replies.ts` | `Replies`: the Engine's Channel writes |
-| `src/core/stage.ts` | `ticketStage` and `canRetry`: the Ticket stages of [003 Execution](003-execution.md) |
-| `src/core/errors.ts` | `UserError` and `USER_ERRORS` |
-| `src/core/reasons.ts` | `Reason`, `REASONS` and `reasonText`: why the core recorded a Decision or set a Trigger aside, by code |
-| `src/core/ids.ts` | `key`: ids derived from their inputs, equal for equal inputs |
-| `src/core/memory.ts` | `MemoryRepositories`: the Store's repositories in memory, in the Store's order and with its nested rollback, for domain tests |
-| `src/core/index.ts` | The core's exports |
-| `src/app/runtime.ts` | The Runtime, the composition root, with its start and stop |
-| `src/app/setup.ts` | Setup, and `setupChanged`, whether a save changes a field setup reads |
-| `src/app/passes.ts` | Passes, the pass scheduler |
-| `src/app/outbox.ts` | The Outbox: the Engine's `Outbox` port, the receipts and the `reply` effects that send them |
-| `src/app/notices.ts` | The main Session's notices and relays: `eventNotice`, `reportRelay`, `resultRelay` and `followupRelay` |
-| `src/app/store.ts` | The Store, and `Receipt`, a message of the outbox |
-| `src/app/store-read.ts` | `storeReads`: the Store's read queries for the views, the tools and the Sources' polls, which never write |
-| `src/app/migration.ts` | The schema 11 migration: one step from schema 10 that writes every stored record in its current shape |
+| `src/index.ts` | Главная точка входа плагина: читает настройки машины, запускает Runtime и даёт ему перезапуск, который использует сохранение аккаунта Источника |
+| `src/deployment.ts` | `Config` и `Machine` плагина; `resolveDeployment` и `resolveFeishuBot` читают репозиторий и аккаунты из настроек Источника, каждый CLI запускается так, как его запускают оболочки Исполнителей; `SETUP_FIELDS` перечисляет поля Источника, которые читает настройка. Код не называет ни одного человека, аккаунта или организации |
+| `src/setup.ts` | Проблемы настройки: `SetupError`, с кодом, местом, которое его исправляет, и английским текстом, который разделяют журнал, основная Сессия и панель |
+| `src/policy.ts` | Политика: схемы настроек по блокам, версия Политики, шлюз и перепроверка Мандата |
+| `src/admission.ts` | Значения таблицы приёма, опции и значения по умолчанию каждой ячейки, разделяемые с панелью |
+| `src/limits.ts` | Лимиты значений, которые задаёт человек, проверяемые схемами настроек и предлагаемые полями панели |
+| `src/kv.ts` | `KV`: каждое семейство записей `kv` с его ключом, типом его значения и его владельцем, а также типы `Key` и `Family`, которые принимают Store и `SourceContext.state` |
+| `src/navigation.ts` | Открывает Сессию DeepSeek Harness из панели, когда каталог хоста её перечисляет |
+| `src/core/model.ts` | Доменные типы, среди них типизированный Тикет и `MandateBasis`, с `threadKey`, `ticketOutcome`, `reached`, `followupOwners`, `settled`, `waitsForPerson`, `liveTicket`, `runningAssignment`, `latestAssignment` и `latestReport` |
+| `src/core/ports.ts` | Порты: `Repositories`, `Policy`, `SourceScope`, `Assessor`, `Executor`, `Outbox` и доменные события |
+| `src/core/engine.ts` | Engine, точка входа ядра, и интерфейсы ролей `EngineForSources`, `EngineForMainSession`, `EngineForPeople`, `EngineForSettings` и `EngineForExecutor` |
+| `src/core/part.ts` | `EnginePart`, база частей Engine, и `EngineOptions` |
+| `src/core/intake.ts` | `Intake`: Триггеры от Источников, к их Тикетам и, если сообщение человека не достигло одного, на Оценку |
+| `src/core/evals.ts` | `Evals`: Оценки Тредов и их Решения |
+| `src/core/tickets.ts` | `Tickets`: жизненный цикл Тикета, Треды, за которыми следует Тикет, Подписки и Входы |
+| `src/core/assignments.ts` | `Assignments`: факты Исполнителя и Отчёты его воркеров |
+| `src/core/replies.ts` | `Replies`: записи Engine в Канал |
+| `src/core/stage.ts` | `ticketStage` и `canRetry`: стадии Тикета из [003 Execution](003-execution.md) |
+| `src/core/errors.ts` | `UserError` и `USER_ERRORS` |
+| `src/core/reasons.ts` | `Reason`, `REASONS` и `reasonText`: почему ядро записало Решение или отложило Триггер, по коду |
+| `src/core/ids.ts` | `key`: id, выведенные из своих входных данных, равные для равных входных данных |
+| `src/core/memory.ts` | `MemoryRepositories`: репозитории Store в памяти, в порядке Store и с его вложенным откатом, для доменных тестов |
+| `src/core/index.ts` | Экспорты ядра |
+| `src/app/runtime.ts` | Runtime, корень композиции, с его запуском и остановкой |
+| `src/app/setup.ts` | Setup и `setupChanged`, меняет ли сохранение поле, которое читает настройка |
+| `src/app/passes.ts` | Passes, планировщик проходов |
+| `src/app/outbox.ts` | Outbox: порт `Outbox` Engine, квитанции и эффекты `reply`, которые их отправляют |
+| `src/app/notices.ts` | Уведомления и пересылки основной Сессии: `eventNotice`, `reportRelay`, `resultRelay` и `followupRelay` |
+| `src/app/store.ts` | Store и `Receipt`, сообщение аутбокса |
+| `src/app/store-read.ts` | `storeReads`: запросы чтения Store для представлений, инструментов и опросов Источников, которые никогда не пишут |
+| `src/app/migration.ts` | Миграция схемы 11: один шаг от схемы 10, который записывает каждую сохранённую запись в её текущей форме |
 | `src/app/effects.ts` | Effects |
-| `src/app/versions.ts` | `Versions`: a record kept as numbered snapshots with a pointer to the current one, for the settings and the prompts |
-| `src/app/cache.ts` | `TextCache`: texts kept in memory within a size, the least recently used dropped first |
+| `src/app/versions.ts` | `Versions`: запись, хранящаяся как нумерованные снимки с указателем на текущий, для настроек и промптов |
+| `src/app/cache.ts` | `TextCache`: тексты, хранящиеся в памяти в пределах размера, наименее недавно использованные удаляются первыми |
 | `src/app/settings.ts` | Settings |
-| `src/app/settings-history.ts` | `policyHistory`: each saved settings revision with what it changed from the one before |
-| `src/app/prompts.ts` | Prompts, `builtInParts`, the built-in parts a team may override, and `promptParts`, the order of a role's prompt sections |
-| `src/app/context.ts` | The built-in prompt text, read from `prompts/`, and the transcript entries Sessions read |
-| `src/app/skill-files.ts` | Packaged text: `promptFile`, which joins a file's one-sentence lines into paragraphs, and the bundled skills |
+| `src/app/settings-history.ts` | `policyHistory`: каждая сохранённая ревизия настроек с тем, что она изменила в сравнении с предыдущей |
+| `src/app/prompts.ts` | Prompts, `builtInParts`, встроенные части, которые команда может переопределить, и `promptParts`, порядок разделов промпта роли |
+| `src/app/context.ts` | Встроенный текст промпта, читаемый из `prompts/`, и записи транскрипта, которые читают Сессии |
+| `src/app/skill-files.ts` | Упакованный текст: `promptFile`, который объединяет однострочные строки файла в абзацы, и включённые навыки |
 | `src/app/sessions.ts` | Sessions |
-| `src/app/delivery.ts` | `AgentDelivery`: delivers a message to a DeepSeek Harness agent once per request id, also across a restored Session |
-| `src/app/retry-health.ts` | `RetryHealth`: which Sessions wait on a model budget retry, for the `models` health entry |
-| `src/app/role-models.ts` | Resolves the Eval and Executor models, and seeds a new Session with its role's model |
-| `src/app/assessment.ts` | The MasterAssessor, the assessment schema and the window `orchestrator_eval` answers |
-| `src/app/execution-environment.ts` | The execution environment: its variables, a Ticket's values, the directory root and the lines of the prompt section, which `src/app/prompts.ts` fills into its template |
-| `src/app/source-context.ts` | `sourceContextOf`: each Source kind's `SourceContext` |
-| `src/app/links.ts` | `sourceLink`, the page of a Trigger's message, and `candidateCard` |
-| `src/app/cards.ts` | Compact cards of Triggers, Tickets, Threads and Decisions for models, the closed set of ticket card states `TICKET_STATES`, and `textPage` |
-| `src/app/resources.ts` | `RESOURCES` and `readResource`: what `orchestrator_read` reads, for each role |
-| `src/app/tools/tool.ts` | The `Tool` type, `readTool`, the `orchestrator_read` of both roles, and `AcknowledgementSchema` |
-| `src/app/tools/main.ts` | The main Session's tools |
-| `src/app/tools/executor.ts` | An Executor Session's tools |
-| `src/app/http.ts` | The `/orchestrator/api` routes: the same-origin check, request limits and one status per kind of failure |
-| `src/app/api.ts` | `Api`, every route with its parameters, query, body and response, and the filters of the lists; it imports only types, so the panel bundles it |
-| `src/app/views/text.ts` | The two forms of a view's text: `preview`, plain text on one line, and `markdown` without HTML; `plain` and `readable` |
-| `src/app/views/records.ts` | The rows the views share: Triggers, Tickets, Threads, Decisions and Channel links, and `ownersOf`, the owners of follow-ups as one request reads them |
-| `src/app/views/tickets.ts` | The Ticket lists by stage, a Ticket's page, the Mandate basis facts and the Executor's load |
-| `src/app/views/threads.ts` | The Thread lists, a Thread's timeline, the search and the Decision list |
-| `src/app/views/sources.ts` | The Source status: each Source instance's state, its last day's counts, and what it filtered and dropped in that day |
-| `src/app/views/settings.ts` | The settings page's view: each block with its revision, each Source's settings with its kind's form, and the execution environment |
-| `src/app/views/overview.ts` | The overview: Tickets that need a person, problems, the last day's flow and the Executor's load |
-| `src/executor/dsh.ts` | The DshExecutor, `WorkerSlots`, `ticketExecution`, `inputMessage` and `mandateInstructions` |
-| `src/executor/background.ts` | A worker's background work in DeepSeek Harness, the shell jobs its Session owns (`ctx.jobs`) and its subagents (`ctx.subagents`): `runningJobs`, `untilQuiet`, `killJobs`, `collectJobs`, `stopSubagents`, `stopBackground`, `until`, and `cancelled`, the workers whose turn a stop of their subagents cancelled |
-| `src/infra/commands.ts` | `Commands`, the CLI transport: `run`; `api` and `pages`, limited to the configured repository and validated; `lark` as the bot; `git`. `CliError` carries the code a command's output reports, such as a GitHub HTTP status, and a command that prints nothing fails with how it ended, never with its arguments; `validItems` skips and counts the malformed items of a list |
-| `src/infra/environment.ts` | The agent's process environment: command shims, the git configuration and credential helper, `runAsWorker`, and the checks of the environment and of a Ticket's directory |
-| `src/infra/paths.ts` | The package's root, where packaged files are |
-| `src/infra/text.ts` | Word counts and the chat message limit, `fill` and `sameName` |
-| `src/infra/health.ts` | The `HealthBoard`, every part's health entry, each claimed by its one writer |
-| `src/sources/kind.ts` | The `SourceKind` protocol |
+| `src/app/delivery.ts` | `AgentDelivery`: доставляет сообщение агенту DeepSeek Harness один раз на id запроса, также через восстановленную Сессию |
+| `src/app/retry-health.ts` | `RetryHealth`: какие Сессии ждут повторную попытку бюджета модели, для записи здоровья `models` |
+| `src/app/role-models.ts` | Разрешает модели Оценки и Исполнителя и наполняет новую Сессию моделью её роли |
+| `src/app/assessment.ts` | MasterAssessor, схема оценки и окно, на которое отвечает `orchestrator_eval` |
+| `src/app/execution-environment.ts` | Среда исполнения: её переменные, значения Тикета, корневой каталог и строки раздела промпта, которые `src/app/prompts.ts` заполняет в свой шаблон |
+| `src/app/source-context.ts` | `sourceContextOf`: `SourceContext` каждого вида Источника |
+| `src/app/links.ts` | `sourceLink`, страница сообщения Триггера, и `candidateCard` |
+| `src/app/cards.ts` | Компактные карточки Триггеров, Тикетов, Тредов и Решений для моделей, закрытое множество состояний карточки Тикета `TICKET_STATES`, и `textPage` |
+| `src/app/resources.ts` | `RESOURCES` и `readResource`: что читает `orchestrator_read`, для каждой роли |
+| `src/app/tools/tool.ts` | Тип `Tool`, `readTool`, `orchestrator_read` обеих ролей и `AcknowledgementSchema` |
+| `src/app/tools/main.ts` | Инструменты основной Сессии |
+| `src/app/tools/executor.ts` | Инструменты Сессии Исполнителя |
+| `src/app/http.ts` | Маршруты `/orchestrator/api`: проверка одного источника, лимиты запросов и один статус на вид неудачи |
+| `src/app/api.ts` | `Api`, каждый маршрут с его параметрами, запросом, телом и ответом, и фильтры списков; он импортирует только типы, поэтому панель его бандлит |
+| `src/app/views/text.ts` | Две формы текста представления: `preview`, простой текст на одной строке, и `markdown` без HTML; `plain` и `readable` |
+| `src/app/views/records.ts` | Строки, которые разделяют представления: Триггеры, Тикеты, Треды, Решения и ссылки Каналов, и `ownersOf`, владельцы фоллоу-апов, как их читает один запрос |
+| `src/app/views/tickets.ts` | Списки Тикетов по стадии, страница Тикета, факты основания Мандата и нагрузка Исполнителя |
+| `src/app/views/threads.ts` | Списки Тредов, таймлайн Треда, поиск и список Решений |
+| `src/app/views/sources.ts` | Состояние Источника: состояние каждого экземпляра Источника, его счётчики за последний день и то, что он отфильтровал и отбросил в этот день |
+| `src/app/views/settings.ts` | Представление страницы настроек: каждый блок со своей ревизией, настройки каждого Источника с формой его вида и среда исполнения |
+| `src/app/views/overview.ts` | Обзор: Тикеты, требующие человека, проблемы, поток последнего дня и нагрузка Исполнителя |
+| `src/executor/dsh.ts` | DshExecutor, `WorkerSlots`, `ticketExecution`, `inputMessage` и `mandateInstructions` |
+| `src/executor/background.ts` | Фоновая работа воркера в DeepSeek Harness, задания оболочки, которыми владеет его Сессия (`ctx.jobs`), и его субагенты (`ctx.subagents`): `runningJobs`, `untilQuiet`, `killJobs`, `collectJobs`, `stopSubagents`, `stopBackground`, `until`, и `cancelled`, воркеры, чей ход отменила остановка их субагентов |
+| `src/infra/commands.ts` | `Commands`, транспорт CLI: `run`; `api` и `pages`, ограниченные настроенным репозиторием и проверяемые; `lark` как бот; `git`. `CliError` несёт код, сообщаемый выводом команды, например HTTP-статус GitHub, а команда, которая ничего не печатает, завершается с тем, как она закончилась, никогда с её аргументами; `validItems` пропускает и подсчитывает неполадные элементы списка |
+| `src/infra/environment.ts` | Окружение процесса агента: командные шимы, git-конфигурация и помощник учётных данных, `runAsWorker` и проверки окружения и каталога Тикета |
+| `src/infra/paths.ts` | Корень пакета, где находятся упакованные файлы |
+| `src/infra/text.ts` | Подсчёт слов и лимит сообщений чата, `fill` и `sameName` |
+| `src/infra/health.ts` | `HealthBoard`, запись здоровья каждой части, заявленная её одним писателем |
+| `src/sources/kind.ts` | Протокол `SourceKind` |
 | `src/sources/registry.ts` | `SourceRegistry` |
-| `src/sources/host.ts` | `SourceHost`, `SourceContext`, `Health`, `health` and the fixed health texts |
-| `src/sources/poll.ts` | What GitHub and Feishu polling share: `POLL_HORIZON_MS`, `polled`, `cursorAt`, and `pollThreads`, which keeps a failure on its Thread as `pollError` |
-| `src/sources/github.ts` | The GitHub kind and plugin entry, exported as `./github-watch`: a poll round of notifications, the pull requests of open Tickets with their CI, and subscribed Threads |
-| `src/sources/github-trigger.ts` | GitHub comments, reviews, Issue bodies and CI changes as Triggers, and GitHub addresses |
-| `src/sources/github-pull.ts` | The pull request rules: which pull requests a Ticket follows (`claimPull`, `observePull`), the closes it reports to the Engine, and `pullEndNotices`, the chat notice of a Ticket that ended merged or closed |
-| `src/sources/github-channel.ts` | The GitHub Channel: comments and review thread replies, `sent` or `gone` |
-| `src/sources/github-read.ts` | CI snapshots, repository reads, the `github/` resources, and `githubThreadContext`: an Issue's or pull request's conversation by page |
-| `src/sources/feishu.ts` | The Feishu kind and plugin entry, exported as `./feishu-watch` |
-| `src/sources/feishu-trigger.ts` | Feishu messages as Triggers, by one rule for live events, history pages and topic pages |
-| `src/sources/feishu-loops.ts` | The Feishu loops: the event consumer, history recovery, chat names and polling of subscribed topics |
-| `src/sources/feishu-channel.ts` | The Feishu Channel: topic replies, `sent` or `gone` |
-| `src/sources/feishu-read.ts` | The `feishu/` reads of a Trigger's message, its root, parent and topic, and `feishuThreadContext`, which gives them to assessments with their images |
-| `src/sources/admission-context.ts` | The bounded window an assessment starts from: the first pages of a Trigger's Thread, read through its kind, and the messages around the Trigger |
-| `src/sources/feishu-image.ts` | Reads a Feishu message's image as an attachment for the assessing Session |
-| `src/client/index.tsx` | The client plugin entry: the sidebar entry, the main panel and the page in DeepSeek Harness's Plugin Manager |
-| `src/client/app.tsx` | The panel: header, search, glossary, tabs and the page of the current route |
-| `src/client/provider.tsx` | What every page reads from its host: copy, calls, navigation, notices, the state poll, and `restart`, which reads the state quickly while dsh-superagent restarts |
-| `src/client/api.ts` | Calls and polls of the management API, typed by `src/app/api.ts`, and the Decision filters of the Eval status |
-| `src/client/route.ts` | The tabs, the settings groups, the typed routes that `parseRoute` reads, and the route memory with the settings group opened last |
-| `src/client/overview.tsx` | The overview |
-| `src/client/source.tsx`, `trigger.tsx`, `eval.tsx`, `execution.tsx` | One file per stage: its status, and its settings where it has some |
-| `src/client/thread.tsx`, `ticket.tsx` | The record pages: a Thread with its timeline, and a Ticket with its authorization, Inputs and Assignments |
-| `src/client/settings.tsx` | The Settings tab: the group navigation and the group on screen |
-| `src/client/settings-kit.tsx` | The building blocks of settings blocks: the settings the stage groups share, `useBlockDraft`, the fields, among them a Source kind's, and the history of saves |
-| `src/client/prompts.tsx` | The Prompts settings: the page owns the view it read and its editor the draft, and the Edit, Full prompt and History tabs render from them; a built-in part's editor shows a changed default and keeps or drops the override |
-| `src/client/prompt-config.ts` | The prompt configuration by section, by the team sections, skill names, built-in parts (`part/<key>`, with `withOverride`) and part headings the prompt views give, and the line diff of the full prompt, as pure functions |
-| `src/client/deployment.tsx` | The Deployment settings, also shown in DeepSeek Harness's Plugin Manager |
-| `src/client/draft.tsx` | Settings drafts: `draftReducer`, their states and their merge with a newer saved revision, `saveBarText`, the save bar's line, and the save bar |
-| `src/client/controls.tsx` | Local copies of DeepSeek Harness's controls, which follow its markup, keyboard behaviour and design tokens, since the bundle does not import `@deepseek-ai/dsh-client-ui-primitives`; they read no context |
-| `src/client/widgets.tsx` | The small components the pages share, which read the panel's context: sections, page heads, load states, times, links, confirmed actions, the setup check and Markdown |
-| `src/client/rows.tsx` | The rows the pages share: a Ticket, a Thread and a Decision, a Thread's chip, and the folding of runs of automated messages |
-| `src/client/markdown.ts` | The Markdown subset of reports and questions, and the bare addresses in messages, as blocks and inline parts |
-| `src/client/text.ts` | Copy by key and the wording of domain values, reasons, senders and times |
-| `src/client/marks.ts` | The marks of the states the views classify: a Ticket's or a Thread's stage, a Source's state and a Decision's outcome, each as a dot, an icon, a tone and a label |
-| `src/client/locales.ts` | All copy in both languages, and the glossary of [001 Domain model](001-domain.md) |
-| `src/client/client.css`, `css.d.ts` | The panel's stylesheet, loaded as text |
+| `src/sources/host.ts` | `SourceHost`, `SourceContext`, `Health`, `health` и фиксированные тексты здоровья |
+| `src/sources/poll.ts` | Что разделяют опросы GitHub и Feishu: `POLL_HORIZON_MS`, `polled`, `cursorAt` и `pollThreads`, который хранит неудачу на её Треде как `pollError` |
+| `src/sources/github.ts` | Вид GitHub и точка входа плагина, экспортируемая как `./github-watch`: раунд опроса уведомлений, pull request'ы открытых Тикетов с их CI и подписанные Треды |
+| `src/sources/github-trigger.ts` | Комментарии GitHub, ревью, тела Issues и изменения CI как Триггеры, и адреса GitHub |
+| `src/sources/github-pull.ts` | Правила pull request'ов: за какими pull request'ами следует Тикет (`claimPull`, `observePull`), закрытия, которые он сообщает Engine, и `pullEndNotices`, уведомление в чат о Тикете, завершившемся merged или closed |
+| `src/sources/github-channel.ts` | Канал GitHub: комментарии и ответы в треде ревью, `sent` или `gone` |
+| `src/sources/github-read.ts` | Снимки CI, чтения репозитория, ресурсы `github/` и `githubThreadContext`: беседа Issue или pull request'а по страницам |
+| `src/sources/feishu.ts` | Вид Feishu и точка входа плагина, экспортируемая как `./feishu-watch` |
+| `src/sources/feishu-trigger.ts` | Сообщения Feishu как Триггеры, по одному правилу для живых событий, страниц истории и страниц тем |
+| `src/sources/feishu-loops.ts` | Циклы Feishu: потребитель событий, восстановление истории, имена чатов и опрос подписанных тем |
+| `src/sources/feishu-channel.ts` | Канал Feishu: ответы в теме, `sent` или `gone` |
+| `src/sources/feishu-read.ts` | Чтения `feishu/` сообщения Триггера, его корня, родителя и темы, и `feishuThreadContext`, который даёт их оценкам с их изображениями |
+| `src/sources/admission-context.ts` | Ограниченное окно, из которого начинается оценка: первые страницы Треда Триггера, читаемые через его вид, и сообщения вокруг Триггера |
+| `src/sources/feishu-image.ts` | Читает изображение сообщения Feishu как вложение для оценивающей Сессии |
+| `src/client/index.tsx` | Точка входа клиентского плагина: запись в боковой панели, основная панель и страница в Plugin Manager DeepSeek Harness |
+| `src/client/app.tsx` | Панель: шапка, поиск, глоссарий, вкладки и страница текущего маршрута |
+| `src/client/provider.tsx` | Что каждая страница читает от своего хоста: текст, вызовы, навигацию, уведомления, опрос состояния и `restart`, который быстро читает состояние, пока dsh-superagent перезапускается |
+| `src/client/api.ts` | Вызовы и опросы API управления, типизированные через `src/app/api.ts`, и фильтры Решений статуса Оценки |
+| `src/client/route.ts` | Вкладки, группы настроек, типизированные маршруты, которые читает `parseRoute`, и память маршрута с группой настроек, открытой последней |
+| `src/client/overview.tsx` | Обзор |
+| `src/client/source.tsx`, `trigger.tsx`, `eval.tsx`, `execution.tsx` | Один файл на стадию: её состояние и её настройки, где они есть |
+| `src/client/thread.tsx`, `ticket.tsx` | Страницы записей: Тред с его таймлайном, и Тикет с его авторизацией, Входами и Назначениями |
+| `src/client/settings.tsx` | Вкладка Settings: навигация по группе и группа на экране |
+| `src/client/settings-kit.tsx` | Строительные блоки блоков настроек: настройки, которые разделяют группы стадий, `useBlockDraft`, поля, среди них поля вида Источника, и история сохранений |
+| `src/client/prompts.tsx` | Настройки Prompts: страница владеет прочитанным представлением, а её редактор — черновиком, и вкладки Edit, Full prompt и History отображаются из них; редактор встроенной части показывает изменённое значение по умолчанию и сохраняет или отбрасывает переопределение |
+| `src/client/prompt-config.ts` | Конфигурация промпта по разделам, по разделам команды, именам навыков, встроенным частям (`part/<key>`, с `withOverride`) и заголовкам частей, которые дают представления промпта, и построчная разница полного промпта, как чистые функции |
+| `src/client/deployment.tsx` | Настройки Deployment, также показанные в Plugin Manager DeepSeek Harness |
+| `src/client/draft.tsx` | Черновики настроек: `draftReducer`, их состояния и их слияние с более новой сохранённой ревизией, `saveBarText`, строка панели сохранения и панель сохранения |
+| `src/client/controls.tsx` | Локальные копии элементов управления DeepSeek Harness, которые следуют его разметке, поведению клавиатуры и дизайн-токенам, поскольку бандл не импортирует `@deepseek-ai/dsh-client-ui-primitives`; они не читают контекст |
+| `src/client/widgets.tsx` | Небольшие компоненты, которые разделяют страницы и читают контекст панели: разделы, шапки страниц, состояния загрузки, времена, ссылки, подтверждённые действия, проверка настройки и Markdown |
+| `src/client/rows.tsx` | Строки, которые разделяют страницы: Тикет, Тред и Решение, чип Треда и сворачивание серий автоматизированных сообщений |
+| `src/client/markdown.ts` | Подмножество Markdown отчётов и вопросов и простые адреса в сообщениях, как блоки и встроенные части |
+| `src/client/text.ts` | Текст по ключу и формулировки доменных значений, причин, отправителей и времён |
+| `src/client/marks.ts` | Метки состояний, которые классифицируют представления: стадия Тикета или Треда, состояние Источника и исход Решения, каждая как точка, иконка, тон и метка |
+| `src/client/locales.ts` | Весь текст на обоих языках и глоссарий [001 Domain model](001-domain.md) |
+| `src/client/client.css`, `css.d.ts` | Таблица стилей панели, загружаемая как текст |
 
-`src/sources/github.ts` and `src/sources/feishu.ts` are also the entries of the two Source plugins, built by `tsdown.config.ts` and exported in `package.json` as `./github-watch` and `./feishu-watch`. The bundle's `cordis.patch.yml` inserts the three plugins, with Feishu disabled.
+`src/sources/github.ts` и `src/sources/feishu.ts` также являются точками входа двух плагинов Источников, собираемыми через `tsdown.config.ts` и экспортируемыми в `package.json` как `./github-watch` и `./feishu-watch`. `cordis.patch.yml` бандла вставляет три плагина, с Feishu отключённым.
 
 ## Tests
 
-| Test | Covers |
+| Тест | Покрывает |
 | --- | --- |
-| `tests/core-engine.spec.ts` | Domain rules on in-memory repositories: receiving, Eval, fan-out, resume and stop, interrupted Assignments, the pause, Policy changes, reports and outcomes, attaching, replies, failed deliveries and dismissed problems |
-| `tests/stage.spec.ts` | The Ticket stages, row by row |
-| `tests/policy.spec.ts` | Source scope, the gate, the admission table, Mandate revalidation, the Policy version, settings migrations and assessment outcomes |
-| `tests/registry.spec.ts` | `SourceRegistry`: instances, validation, Policy parts, Channels and Thread context |
-| `tests/sources.spec.ts` | The Feishu and GitHub Sources on a `SourceContext`: translation, polls and read positions, the pull request rules, health |
-| `tests/commands.spec.ts` | CLI calls as the deployment's accounts, the Channels' answers, and repository-scoped GitHub calls |
-| `tests/feishu-read.spec.ts`, `tests/github-read.spec.ts` | Feishu and GitHub reads |
-| `tests/admission-context.spec.ts`, `tests/feishu-image.spec.ts` | The Thread window of assessments, and Feishu image reads |
-| `tests/assessment.spec.ts` | What the MasterAssessor keeps per Eval, and when it lets go |
-| `tests/background.spec.ts` | Waiting for a worker's shell jobs and subagents: an end that woke it, and a host that stops |
-| `tests/bundle-patch.spec.ts` | The bundle's patch, read as DeepSeek Harness reads it, and the agent preset of Executor Sessions it defines |
-| `tests/effects.spec.ts` | The effect queue: coalescing, limits, retries with backoff, health and shutdown |
-| `tests/passes.spec.ts` | Passes: one at a time, the ones asked for during a pass run as one after it, and the runtime health a failed pass reports |
-| `tests/outbox.spec.ts` | The Outbox on a running Runtime: messages wait while processing is paused or their Source is not installed |
+| `tests/core-engine.spec.ts` | Доменные правила на in-memory репозиториях: приём, Оценка, раздача, возобновление и остановка, прерванные Назначения, пауза, изменения Политики, отчёты и исходы, присоединение, ответы, неудавшиеся доставки и отклонённые проблемы |
+| `tests/stage.spec.ts` | Стадии Тикета, строка за строкой |
+| `tests/policy.spec.ts` | Область Источника, шлюз, таблица приёма, перепроверка Мандата, версия Политики, миграции настроек и исходы оценки |
+| `tests/registry.spec.ts` | `SourceRegistry`: экземпляры, проверка, части Политики, Каналы и контекст Треда |
+| `tests/sources.spec.ts` | Источники Feishu и GitHub на `SourceContext`: трансляция, опросы и позиции чтения, правила pull request'ов, здоровье |
+| `tests/commands.spec.ts` | Вызовы CLI как аккаунты развёртывания, ответы Каналов и вызовы GitHub с ограничением по репозиторию |
+| `tests/feishu-read.spec.ts`, `tests/github-read.spec.ts` | Чтения Feishu и GitHub |
+| `tests/admission-context.spec.ts`, `tests/feishu-image.spec.ts` | Окно Треда оценок и чтения изображений Feishu |
+| `tests/assessment.spec.ts` | Что MasterAssessor хранит на Оценку и когда отпускает |
+| `tests/background.spec.ts` | Ожидание заданий оболочки и субагентов воркера: конец, который его пробудил, и хост, который останавливается |
+| `tests/bundle-patch.spec.ts` | Патч бандла, читаемый так, как его читает DeepSeek Harness, и пресет агента Сессий Исполнителей, который он определяет |
+| `tests/effects.spec.ts` | Очередь эффектов: слияние, лимиты, повторы с отсрочкой, здоровье и завершение |
+| `tests/passes.spec.ts` | Passes: по одному за раз, запрошенные во время прохода выполняются как один после него, и здоровье рантайма, о котором сообщает неудачный проход |
+| `tests/outbox.spec.ts` | Outbox на работающем Runtime: сообщения ждут, пока обработка приостановлена или их Источник не установлен |
 | `tests/cache.spec.ts` | `TextCache` |
-| `tests/queue.spec.ts` | The Runtime's work through the effect queue, and what earlier versions stored |
-| `tests/followups.spec.ts` | A person's follow-up on a Ticket's Thread: its notice to the main Session, the tools that act on it, what a burst costs; a worker's hand-back and context follow, and the main Session's note |
-| `tests/health.spec.ts` | One health entry per part, each cleared by its own next success |
+| `tests/queue.spec.ts` | Работа Runtime через очередь эффектов и то, что хранили более ранние версии |
+| `tests/followups.spec.ts` | Фоллоу-ап человека на Треде Тикета: его уведомление основной Сессии, инструменты, действующие на него, чего стоит всплеск; возврат воркера и контекст следуют, и заметка основной Сессии |
+| `tests/health.spec.ts` | Одна запись здоровья на часть, каждая очищается собственным следующим успехом |
 | `tests/delivery.spec.ts` | `AgentDelivery` |
-| `tests/retry-health.spec.ts`, `tests/role-models.spec.ts` | Model budget retries, and the models of the two roles |
-| `tests/runtime.spec.ts` | The whole application on a simulated DeepSeek Harness host, through tools and HTTP |
-| `tests/tools.spec.ts` | The Sessions' tools: what `orchestrator_read` reads for each role, and the shapes and checks of the other main Session tools |
-| `tests/runtime-concurrency.spec.ts` | Work that overlaps: Triggers during a pass, Tickets that change during deliveries and launches |
-| `tests/http.spec.ts` | The same-origin and loopback checks, the status of each kind of failure, the body limit, path parameters and queries |
-| `tests/settings.spec.ts` | Settings saves that race a model or account check, a Policy sync that a save outran, and the refusals of the pause, a sync and a block |
-| `tests/views.spec.ts` | What the management views derive from the Store, such as the Thread a dropped message belongs to |
-| `tests/timeline.spec.ts` | A Thread's pages and a Trigger's neighbours by time and then id, with every received Trigger's time in one form |
-| `tests/migration.spec.ts` | The schema 11 migration: every stored record in its current shape, and the refusal of older schemas |
-| `tests/store.spec.ts` | Repositories and their working sets, in SQLite as in memory, the kv area, with every key of `KV` spelled only in `src/kv.ts` and the migration, settings history and queries |
-| `tests/prompts.spec.ts` | Prompt validation, assembly and versions |
-| `tests/cards.spec.ts` | The rules the built-in text must state, file by file |
-| `tests/model-surface.spec.ts` | Everything models read: tools, prompts, skills and inputs, checked against the tool schemas, the execution environment and the glossary, within a size budget per role |
-| `tests/deployment.spec.ts`, `tests/environment.spec.ts`, `tests/index.spec.ts` | The plugin configuration and setup, the agent's process environment, the plugin entry |
-| `tests/service-script.spec.ts` | `scripts/dsh-superagent` against fake `ps`, `tmux` and `dsh` |
-| `tests/client.spec.tsx`, `tests/navigation.spec.ts`, `tests/controls.spec.tsx` | The client plugin's registration and polling, Session navigation and route memory, the local controls, and the panel's imports, which have no cycle |
-| `tests/panel-overview.spec.tsx`, `panel-source.spec.tsx`, `panel-trigger.spec.tsx`, `panel-eval.spec.tsx`, `panel-execution.spec.tsx` | Each page of the panel, against a fake management API answered by route |
-| `tests/panel-settings.spec.tsx`, `panel-prompts.spec.tsx`, `panel-deployment.spec.tsx`, `panel-panel.spec.tsx` | The settings groups, drafts and history, the prompts, the Deployment page, and the panel's search, glossary and route memory |
-| `tests/draft.spec.ts`, `tests/prompt-config.spec.ts`, `tests/markdown.spec.ts`, `tests/marks.spec.ts` | Draft states, merges and the save bar's line; the prompt configuration by section and the line diff; the Markdown subset and its links; the mark of every state the views classify |
-| `tests/locales.spec.ts`, `tests/styles.spec.ts` | The copy in both languages, the stylesheet |
-| `tests/class-docs.spec.ts` | Every class in `src` has a JSDoc block before it |
-| `tests/docs.spec.ts` | Numbered documents link only to earlier ones, every local link resolves, no document has merge conflict markers, and this document's tables list every module and every test |
+| `tests/retry-health.spec.ts`, `tests/role-models.spec.ts` | Повторы бюджета модели и модели двух ролей |
+| `tests/runtime.spec.ts` | Всё приложение на смоделированном хосте DeepSeek Harness, через инструменты и HTTP |
+| `tests/tools.spec.ts` | Инструменты Сессий: что `orchestrator_read` читает для каждой роли, и формы и проверки других инструментов основной Сессии |
+| `tests/runtime-concurrency.spec.ts` | Работа, которая перекрывается: Триггеры во время прохода, Тикеты, которые меняются во время доставок и запусков |
+| `tests/http.spec.ts` | Проверки одного источника и loopback, статус каждого вида неудачи, лимит тела, параметры пути и запросы |
+| `tests/settings.spec.ts` | Сохранения настроек, которые соревнуются с проверкой модели или аккаунта, синхронизация Политики, которую обогнало сохранение, и отказы паузы, синхронизации и блока |
+| `tests/views.spec.ts` | Что представления управления выводят из Store, например Тред, которому принадлежит отброшенное сообщение |
+| `tests/timeline.spec.ts` | Страницы Треда и соседи Триггера по времени, а затем по id, с временем каждого полученного Триггера в одной форме |
+| `tests/migration.spec.ts` | Миграция схемы 11: каждая сохранённая запись в её текущей форме и отказ от более старых схем |
+| `tests/store.spec.ts` | Репозитории и их рабочие наборы, в SQLite как в памяти, область kv, с каждым ключом `KV`, записанным только в `src/kv.ts`, и миграцией, историей настроек и запросами |
+| `tests/prompts.spec.ts` | Проверка, сборка и версии промптов |
+| `tests/cards.spec.ts` | Правила, которые должен указывать встроенный текст, файл за файлом |
+| `tests/model-surface.spec.ts` | Всё, что модели читают: инструменты, промпты, навыки и входы, проверяемые против схем инструментов, среды исполнения и глоссария, в пределах бюджета размера на роль |
+| `tests/deployment.spec.ts`, `tests/environment.spec.ts`, `tests/index.spec.ts` | Конфигурация и настройка плагина, окружение процесса агента, точка входа плагина |
+| `tests/service-script.spec.ts` | `scripts/dsh-superagent` против поддельных `ps`, `tmux` и `dsh` |
+| `tests/client.spec.tsx`, `tests/navigation.spec.ts`, `tests/controls.spec.tsx` | Регистрация и опрос клиентского плагина, навигация Сессии и память маршрута, локальные элементы управления и импорты панели, которые не имеют цикла |
+| `tests/panel-overview.spec.tsx`, `panel-source.spec.tsx`, `panel-trigger.spec.tsx`, `panel-eval.spec.tsx`, `panel-execution.spec.tsx` | Каждая страница панели, против поддельного API управления, отвечающего по маршруту |
+| `tests/panel-settings.spec.tsx`, `panel-prompts.spec.tsx`, `panel-deployment.spec.tsx`, `panel-panel.spec.tsx` | Группы настроек, черновики и история, промпты, страница Deployment и поиск, глоссарий и память маршрута панели |
+| `tests/draft.spec.ts`, `tests/prompt-config.spec.ts`, `tests/markdown.spec.ts`, `tests/marks.spec.ts` | Состояния черновиков, слияния и строка панели сохранения; конфигурация промпта по разделам и построчная разница; подмножество Markdown и его ссылки; метка каждого состояния, которое классифицируют представления |
+| `tests/locales.spec.ts`, `tests/styles.spec.ts` | Текст на обоих языках, таблица стилей |
+| `tests/class-docs.spec.ts` | Каждый класс в `src` имеет блок JSDoc перед ним |
+| `tests/docs.spec.ts` | Нумерованные документы ссылаются только на более ранние, каждая локальная ссылка разрешается, ни один документ не имеет маркеров конфликта слияния, и таблицы этого документа перечисляют каждый модуль и каждый тест |
 
-`tests/fixtures/` holds what several tests share: `host.ts`, a simulated DeepSeek Harness host; `panel-server.ts` and `panel.tsx`, the fake management API and the panel around a page; `deployment.ts`, a resolved deployment; `git.ts`, the environment of every git the tests start, which names no repository; and `async.ts`.
+`tests/fixtures/` хранит то, что разделяют несколько тестов: `host.ts`, смоделированный хост DeepSeek Harness; `panel-server.ts` и `panel.tsx`, поддельный API управления и панель вокруг страницы; `deployment.ts`, разрешённое развёртывание; `git.ts`, окружение каждого git, который запускают тесты, не называющее ни одного репозитория; и `async.ts`.
 
 ## Persistence
 
-One SQLite file, `<stateDir>/orchestrator.sqlite`, which only the Store opens.
+Один файл SQLite, `<stateDir>/orchestrator.sqlite`, который открывает только Store.
 
-| Table | Holds | Written by |
+| Таблица | Хранит | Пишется |
 | --- | --- | --- |
-| `trigger` | Each Trigger, its time `at` in the one form `Date#toISOString` gives, set when the Engine receives it, so times compare as text | Engine |
-| `disposition` | Where each Trigger went: `filtered` with the Source's reason code, its Eval and Decision, the Tickets it reached, by fan-out or attachment, whether it was requeued, the Tickets that handed it back with their reasons, and those whose Executor acknowledged or answered it | Engine |
-| `trigger_thread` | Which Threads each Trigger is on, with its time and whether a person wrote it, so a Thread's Triggers are read without scanning every Trigger, in order of time and then id: a page of a Thread's timeline continues from a `<at>|<id>` cursor, and Triggers that share a time are not skipped | Store, with each Trigger |
-| `thread` | Threads: Subscriptions, the Tickets that follow it for context, queued Triggers, the Eval in progress, the count of its expiries and `meta`; the generated columns `active`, set while Triggers are queued or an Eval runs, and `subscribed`, its Source while a Ticket subscribes to it | Engine; Sources write `meta` |
-| `ticket` | Tickets with their Mandate, origin, execution, Assignments, Channels, Inputs and the Threads they follow; the generated columns `open`, set while it has not ended, and `active`, set while Inputs are undelivered or the latest Assignment is pending or running | Engine |
-| `decision` | Decisions, by Thread | Engine |
-| `effect` | The effect queue: per kind and key, the payload, its order, failed attempts with the last error, and when it is due | Effects; the schema 11 migration queues what earlier versions kept for the main Session |
-| `outbox` | The receipt of each message for a Channel, by id, with the Ticket it is for and its `status`, `pending`, `sent` or `dropped`, kept so an id is never queued twice; for a dropped message, when and why, as the generated column `dropped`, its time, and a reason code. A message that waits has a `reply` effect, which holds its attempts | The Outbox |
-| `kv` | Every other record, by key | The part that names it |
+| `trigger` | Каждый Триггер, его время `at` в одной форме, которую даёт `Date#toISOString`, задаётся, когда Engine его принимает, поэтому времена сравниваются как текст | Engine |
+| `disposition` | Куда ушёл каждый Триггер: `filtered` с кодом причины Источника, его Оценка и Решение, Тикеты, которых он достиг, по раздаче или присоединению, был ли он повторно поставлен в очередь, Тикеты, которые его вернули, с их причинами, и те, чей Исполнитель подтвердил или ответил на него | Engine |
+| `trigger_thread` | На каких Тредах каждый Триггер, с его временем и тем, написал ли его человек, чтобы Триггеры Треда читались без сканирования каждого Триггера, в порядке времени, а затем id: страница таймлайна Треда продолжается с курсора `<at>|<id>`, и Триггеры, разделяющие время, не пропускаются | Store, с каждым Триггером |
+| `thread` | Треды: Подписки, Тикеты, следующие за ним для контекста, поставленные в очередь Триггеры, текущая Оценка, счётчик его просрочек и `meta`; генерируемые колонки `active`, задаваемая, пока стоят в очереди Триггеры или идёт Оценка, и `subscribed`, его Источник, пока Тикет подписан на него | Engine; Источники пишут `meta` |
+| `ticket` | Тикеты с их Мандатом, происхождением, исполнением, Назначениями, Каналами, Входами и Тредами, за которыми они следуют; генерируемые колонки `open`, задаваемая, пока он не завершён, и `active`, задаваемая, пока Входы не доставлены или последнее Назначение ожидает или выполняется | Engine |
+| `decision` | Решения, по Треду | Engine |
+| `effect` | Очередь эффектов: на kind и ключ, полезная нагрузка, его порядок, неудачные попытки с последней ошибкой и когда он просрочен | Effects; миграция схемы 11 ставит в очередь то, что более ранние версии хранили для основной Сессии |
+| `outbox` | Квитанция каждого сообщения для Канала, по id, с Тикетом, для которого она, и её `status`, `pending`, `sent` или `dropped`, хранится, чтобы id никогда не ставился в очередь дважды; для отброшенного сообщения, когда и почему, как генерируемая колонка `dropped`, его время и код причины. Сообщение, которое ждёт, имеет эффект `reply`, который хранит его попытки | Outbox |
+| `kv` | Каждая другая запись, по ключу | Часть, которая её называет |
 
-A generated column is computed from its row's JSON and is empty outside its set, and each has an index over its set, so a pass reads only active work. A database that predates a column gets it when the Store opens it.
+Генерируемая колонка вычисляется из JSON своей строки и пуста вне своего множества, и каждая имеет индекс над своим множеством, поэтому проход читает только активную работу. База данных, предшествующая колонке, получает её, когда Store её открывает.
 
-`KV` (`src/kv.ts`) defines each key-value record's owner, key and type. All readers and writers use these entries; only migration code names older keys.
+`KV` (`src/kv.ts`) определяет владельца, ключ и тип каждой записи ключ-значение. Все читатели и писатели используют эти записи; только код миграции называет старые ключи.
 
-| Records | Keys or contents |
+| Записи | Ключи или содержимое |
 | --- | --- |
-| Schema | Current schema version |
-| Settings versions | `settings-revision`, `settings-version:<n>`, `settings-block-revision:<block>`; snapshots include origin, Policy version and affected Tickets |
-| Prompt versions | `prompt-revision`, `prompt-version:<n>` |
-| Main Session | `master-id` |
-| Session prompt history | `session-prompts:<session id>` |
-| Source state | Read positions such as `github-cursor:<number>`, PR CI fingerprints and seen Feishu-topic messages; keys begin with the kind or `thread-` plus a Thread key |
-| Display names | `source-labels:<source id>` |
+| Schema | Текущая версия схемы |
+| Версии настроек | `settings-revision`, `settings-version:<n>`, `settings-block-revision:<block>`; снимки включают происхождение, версию Политики и затронутые Тикеты |
+| Версии промптов | `prompt-revision`, `prompt-version:<n>` |
+| Основная Сессия | `master-id` |
+| История промптов Сессии | `session-prompts:<session id>` |
+| Состояние Источника | Позиции чтения, такие как `github-cursor:<number>`, отпечатки CI PR и виденные сообщения тем Feishu; ключи начинаются с вида или `thread-` плюс ключ Треда |
+| Отображаемые имена | `source-labels:<source id>` |
 
-Dismissal is stored on its Decision. Input text is rendered from the Ticket when read, so neither needs a separate key-value record.
+Отклонение хранится на его Решении. Текст Входа отображается из Тикета при чтении, поэтому ни одному из них не нужна отдельная запись ключ-значение.
 
-Read caches use bounded in-memory `TextCache` instances and are lost on restart. A Session paging through an original Source record or prompt preview must reread offset 0 after a restart. Feishu links resolved after intake are cached the same way; link-based search finds them only after that link has been read during the current process lifetime.
+Кеши чтения используют ограниченные in-memory экземпляры `TextCache` и теряются при перезапуске. Сессия, листающая исходную запись Источника или предпросмотр промпта, должна перечитать смещение 0 после перезапуска. Ссылки Feishu, разрешённые после приёма, кешируются тем же способом; поиск на основе ссылок находит их только после того, как эта ссылка была прочитана в течение текущего времени жизни процесса.
 
-Nothing deletes old records yet, so these grow without bound: the `trigger`, `disposition` and `decision` rows; ended Tickets and their Threads; the outbox's receipts; and in `kv`, every saved settings revision and prompt version, the prompt revisions each Session worked under, and the Sources' records per Thread and per Issue or pull request.
+Ничто ещё не удаляет старые записи, поэтому они растут безгранично: строки `trigger`, `disposition` и `decision`; завершённые Тикеты и их Треды; квитанции аутбокса; а в `kv` — каждая сохранённая ревизия настроек и версия промпта, ревизии промптов, под которыми работала каждая Сессия, и записи Источников на Тред и на Issue или pull request.
 
-`SCHEMA_VERSION` only increases. A database of a newer version refuses to start; `src/app/migration.ts` upgrades a database of the pre-release schema 10 once, at start, and refuses an older one.
+`SCHEMA_VERSION` только увеличивается. База данных более новой версии отказывается запускаться; `src/app/migration.ts` обновляет базу данных предварительной схемы 10 один раз, при запуске, и отказывает более старой.
 
 ## Model-facing interfaces
 
-### Main Session tools
+### Инструменты основной Сессии
 
-The main Session has 14 application tools:
+Основная Сессия имеет 14 прикладных инструментов:
 
-| Purpose | Tools |
+| Назначение | Инструменты |
 | --- | --- |
-| Read and route | `orchestrator_read`, `orchestrator_route` |
-| Manage Tickets | `orchestrator_ticket_retry`, `orchestrator_ticket_request_status`, `orchestrator_ticket_note` |
-| Re-evaluate | `orchestrator_trigger_requeue` |
-| Assess proactive work | `orchestrator_eval`, `orchestrator_eval_read`, `orchestrator_eval_decide` |
-| Communicate and unsubscribe | `orchestrator_reply`, `orchestrator_thread_unsubscribe` |
-| Configure | `orchestrator_settings_save`, `orchestrator_policy_sync`, `orchestrator_prompts_save` |
+| Чтение и маршрутизация | `orchestrator_read`, `orchestrator_route` |
+| Управление Тикетами | `orchestrator_ticket_retry`, `orchestrator_ticket_request_status`, `orchestrator_ticket_note` |
+| Переоценка | `orchestrator_trigger_requeue` |
+| Оценка проактивной работы | `orchestrator_eval`, `orchestrator_eval_read`, `orchestrator_eval_decide` |
+| Общение и отписка | `orchestrator_reply`, `orchestrator_thread_unsubscribe` |
+| Настройка | `orchestrator_settings_save`, `orchestrator_policy_sync`, `orchestrator_prompts_save` |
 
-`orchestrator_route` accepts 1–20 decisions in order. Each accept, attach, stop or ignore runs as a separate Engine command. It also permits ignoring an inferred candidate directly from its card. `orchestrator_ticket_note` sends a fact as context, not authority.
+`orchestrator_route` принимает 1–20 решений по порядку. Каждое accept, attach, stop или ignore выполняется как отдельная команда Engine. Он также допускает игнорирование предполагаемого кандидата прямо из его карточки. `orchestrator_ticket_note` отправляет факт как контекст, не как полномочие.
 
-Settings saves select `policy`, `eval`, `executor`, `pause`, or `source`; the last also names its Source id. A prompt save with `preview: true` composes text without saving.
+Сохранения настроек выбирают `policy`, `eval`, `executor`, `pause` или `source`; последний также называет свой id Источника. Сохранение промпта с `preview: true` собирает текст без сохранения.
 
-The main Session also has DeepSeek Harness's `skill`, `bash`, `read`, `read_image`, `job_output`, `job_list` and `job_kill`. Avoiding code reads is a prompt rule, not a tool restriction.
+Основная Сессия также имеет `skill`, `bash`, `read`, `read_image`, `job_output`, `job_list` и `job_kill` DeepSeek Harness. Избегание чтения кода — это правило промпта, а не ограничение инструмента.
 
-### Presets and wait limits
+### Пресеты и лимиты ожидания
 
-New main Sessions use `dsh-superagent-router` (`ROUTER_PRESET`). Shell commands and job waits return after 5 seconds. If the Web UI selects another preset before the first turn, `Sessions` restores this preset, or `WORKER_PRESET` for a worker.
+Новые основные Сессии используют `dsh-superagent-router` (`ROUTER_PRESET`). Команды оболочки и ожидания заданий возвращаются через 5 секунд. Если веб-интерфейс выбирает другой пресет до первого хода, `Sessions` восстанавливает этот пресет, или `WORKER_PRESET` для воркера.
 
-The `noWait` guard in `src/app/sessions.ts` refuses main-Session shell commands that invoke `sleep` at a command position, shell `timeoutMs` above 30 seconds, and `job_output` waits above 5 seconds. Reports and job results arrive automatically, so waiting only delays incoming candidates.
+Защита `noWait` в `src/app/sessions.ts` отказывает командам оболочки основной Сессии, вызывающим `sleep` на позиции команды, `timeoutMs` оболочки выше 30 секунд и ожиданиям `job_output` выше 5 секунд. Отчёты и результаты заданий приходят автоматически, поэтому ожидание только задерживает входящих кандидатов.
 
-Existing main Sessions on `standard` also need explicit timeouts for foreground commands and job waits; otherwise that preset's defaults hold the step for 60 and 30 seconds respectively. The host determines the current preset through `presetForSession`, falls back to the Session projection or header, and assumes `standard` if it cannot read the value.
+Существующие основные Сессии на `standard` также нуждаются в явных тайм-аутах для фоновых команд и ожиданий заданий; иначе значения по умолчанию этого пресета держат шаг 60 и 30 секунд соответственно. Хост определяет текущий пресет через `presetForSession`, отступая к проекции или заголовку Сессии, и предполагает `standard`, если не может прочитать значение.
 
-### Executor tools
+### Инструменты Исполнителя
 
-Each Executor has six application tools:
+Каждый Исполнитель имеет шесть прикладных инструментов:
 
-| Tool | Purpose |
+| Инструмент | Назначение |
 | --- | --- |
-| `orchestrator_read` | Read resources available to its own Ticket |
-| `orchestrator_ack` | Acknowledge a request |
-| `orchestrator_report` | Report progress or an outcome, binding a pull request under the pull-request rules |
-| `orchestrator_thread_unrelated` | Drop an unrelated attached Thread, hand back its owned follow-ups and tell the main Session why |
-| `orchestrator_thread_follow` | Subscribe to a related Thread for context and tell the main Session |
-| `orchestrator_trigger_handback` | Hand back a message once, with a reason carried by its candidate |
+| `orchestrator_read` | Читать ресурсы, доступные его собственному Тикету |
+| `orchestrator_ack` | Подтвердить запрос |
+| `orchestrator_report` | Сообщить прогресс или исход, привязывая pull request по правилам pull request'ов |
+| `orchestrator_thread_unrelated` | Отбросить нерелевантный присоединённый Тред, вернуть принадлежащие ему фоллоу-апы и сообщить основной Сессии, почему |
+| `orchestrator_thread_follow` | Подписаться на связанный Тред для контекста и сообщить основной Сессии |
+| `orchestrator_trigger_handback` | Вернуть сообщение один раз, с причиной, которую несёт его кандидат |
 
-A hand-back returns `queued: false` if another Ticket still owns the message, or this Ticket never owned it. For example, a bot message went to Eval independently.
+Возврат возвращает `queued: false`, если другой Тикет всё ещё владеет сообщением или этот Тикет никогда им не владел. Например, сообщение бота ушло на Оценку независимо.
 
-The worker preset is defined in `cordis.patch.yml` and selected through `WORKER_PRESET`. `WORK_TOOLS` in `src/app/sessions.ts` retains available file, search, shell, job, web, skill, todo and subagent tools. Workers do not receive tools for asking or presenting to a person, changing the profile, scheduling work outside worker slots, starting or messaging other Sessions, or editing external documents. Tool calls are refused after the Ticket ends.
+Пресет воркера определён в `cordis.patch.yml` и выбран через `WORKER_PRESET`. `WORK_TOOLS` в `src/app/sessions.ts` сохраняет доступные инструменты файла, поиска, оболочки, заданий, веба, навыков, todo и субагентов. Воркеры не получают инструментов для просьбы или представления человеку, изменения профиля, планирования работы вне слотов воркера, запуска или отправки сообщений другим Сессиям или редактирования внешних документов. Вызовы инструментов отклоняются после завершения Тикета.
 
-### Result shapes and assessment context
+### Формы результатов и контекст оценки
 
-Routing results use `{decision?, reason, ticket?}`. `orchestrator_route` returns `{results}`, preserving item order and adding each item's `trigger_id` and `kind`. Invalid or refused items return `refused` and a reason without stopping the batch.
+Результаты маршрутизации используют `{decision?, reason, ticket?}`. `orchestrator_route` возвращает `{results}`, сохраняя порядок элементов и добавляя каждому элементу его `trigger_id` и `kind`. Недопустимые или отклонённые элементы возвращают `refused` и причину, не останавливая пакет.
 
-Settings and prompt saves return the saved configuration. Policy sync returns the Source, allowed-list size, and `added` and `removed` names.
+Сохранения настроек и промптов возвращают сохранённую конфигурацию. Синхронизация Политики возвращает Источник, размер списка разрешённых и имена `added` и `removed`.
 
-`orchestrator_eval` returns context rather than instructions. Assessment instructions live in `runtime/admission` (`prompts/admission.md`), and rules in `runtime/policy`. Its context includes:
+`orchestrator_eval` возвращает контекст, а не инструкции. Инструкции по оценке живут в `runtime/admission` (`prompts/admission.md`), а правила — в `runtime/policy`. Его контекст включает:
 
-- The Trigger text, up to 4,000 characters, with image ids and other Triggers in the batch.
-- Up to eight `related_tickets`, open ones first, and `tickets_total`.
-- The Eval's `policy_version`.
-- A Thread window: the first five messages and five on either side of the Trigger. Messages use `{id, from, at, text}`, normally limited to 400 characters, or 1,200 for the two on either side. Truncated messages include `chars`; image references use `images`.
-- Other loaded messages as `{id, from, preview}` stubs of 50 characters. `orchestrator_eval_read` expands them by id.
+- Текст Триггера, до 4 000 символов, с id изображений и другими Триггерами пакета.
+- До восьми `related_tickets`, открытые первыми, и `tickets_total`.
+- `policy_version` Оценки.
+- Окно Треда: первые пять сообщений и пять по обе стороны от Триггера. Сообщения используют `{id, from, at, text}`, обычно ограниченные 400 символами или 1 200 для двух по обе стороны. Обрезанные сообщения включают `chars`; ссылки на изображения используют `images`.
+- Другие загруженные сообщения как заглушки `{id, from, preview}` по 50 символов. `orchestrator_eval_read` раскрывает их по id.
 
-Ticket cards use the closed `TICKET_STATES` set from `src/app/cards.ts`: an open stage such as `person/review` or `working/queued`, or an ended outcome. Acknowledgements are limited to 100 words whether submitted through accept, assessment or `orchestrator_ack`.
+Карточки Тикетов используют закрытое множество `TICKET_STATES` из `src/app/cards.ts`: открытую стадию, такую как `person/review` или `working/queued`, или завершённый исход. Подтверждения ограничены 100 словами, будь то поданные через принятие, оценку или `orchestrator_ack`.
 
-### Read resources
+### Ресурсы чтения
 
-`RESOURCES` in `src/app/resources.ts` defines the resources and generates the tool's `resource` description.
+`RESOURCES` в `src/app/resources.ts` определяет ресурсы и генерирует описание `resource` инструмента.
 
-| Resources | Content |
+| Ресурсы | Содержимое |
 | --- | --- |
-| `tickets`, `triggers`, `threads`, `decisions` | Paged lists as `{items, next_offset}`; activity lists put newest first |
-| `decision/<id>` | One Decision |
-| `thread/<key>` | Label, Tickets, recent Decisions and a page of Triggers |
-| `trigger/<id>` | Message text, replied-to Trigger and neighboring messages, excluding CI runs |
-| `ticket/<id>` | Related ids, source-batch Triggers, Threads, and first pages of Assignments and Inputs |
-| Ticket subresources | `/assignments`, `/inputs`, `/assignment`, `/result`, `/report/<assignment id>`, `/transcript`, `/message/<n>`, `/input/<id>` |
-| `settings`, `settings/<block>` | Revisions and summaries, or a complete block ready to save |
-| `prompts`, `prompts/<revision>`, `prompts/current`, `prompts/defaults`, `prompt-preview/<id>` | Prompt configurations and composed text |
-| `models`, `models/<provider>` | Available models |
-| `feishu/<trigger id>/…`, `github/…` | Original Source records, described in the Source skills |
+| `tickets`, `triggers`, `threads`, `decisions` | Листаемые списки как `{items, next_offset}`; списки активности ставят новейшее первым |
+| `decision/<id>` | Одно Решение |
+| `thread/<key>` | Метка, Тикеты, недавние Решения и страница Триггеров |
+| `trigger/<id>` | Текст сообщения, Триггер, на который отвечено, и соседние сообщения, исключая запуски CI |
+| `ticket/<id>` | Связанные id, Триггеры исходного пакета, Треды и первые страницы Назначений и Входов |
+| Подресурсы Тикета | `/assignments`, `/inputs`, `/assignment`, `/result`, `/report/<assignment id>`, `/transcript`, `/message/<n>`, `/input/<id>` |
+| `settings`, `settings/<block>` | Ревизии и сводки, или полный блок, готовый к сохранению |
+| `prompts`, `prompts/<revision>`, `prompts/current`, `prompts/defaults`, `prompt-preview/<id>` | Конфигурации промптов и собранный текст |
+| `models`, `models/<provider>` | Доступные модели |
+| `feishu/<trigger id>/…`, `github/…` | Исходные записи Источника, описанные в навыках Источников |
 
-Ticket Threads are marked `context` for context-only follows and `bound` for Source bindings. Assignment pages are newest first and include report previews. Continue lists with `next_offset`. `/input/<id>` accepts an Input's name or id. `settings` includes small blocks in full and summarizes Policy and Source blocks.
+Треды Тикетов помечены `context` для слежения только для контекста и `bound` для привязок Источника. Страницы Назначений идут новейшими первыми и включают предпросмотры отчётов. Продолжайте списки с `next_offset`. `/input/<id>` принимает имя или id Входа. `settings` включает небольшие блоки полностью и обобщает блоки Политики и Источников.
 
-Source resources include message neighborhoods, `github/pulls/<n>/thread/<comment id>` and `github/commits/<sha>/checks`.
+Ресурсы Источников включают окрестности сообщений, `github/pulls/<n>/thread/<comment id>` и `github/commits/<sha>/checks`.
 
-An original's messages read in one compact shape, `{id, from, at, text, reply_to?, path?, line?, url?}`, not as GitHub or Feishu records them.
+Сообщения оригинала читаются в одной компактной форме, `{id, from, at, text, reply_to?, path?, line?, url?}`, а не так, как их записывают GitHub или Feishu.
 
-An Executor Session reads only its own Ticket, its Threads, the Triggers that reached it or that its request held, the prompt versions it worked under and the originals, and its pages leave out the ids of what it cannot read, Decisions and other Tickets.
+Сессия Исполнителя читает только свой собственный Тикет, его Треды, Триггеры, которые достигли его или которые удерживал его запрос, версии промптов, под которыми она работала, и оригиналы, а её страницы опускают id того, что она не может читать, Решения и другие Тикеты.
 
-Every id a page shows reads through one of these, so a Session walks from one object to the next; hashes nothing reads by, such as an Eval's id or a Policy version, stay off the pages.
+Каждый id, который показывает страница, читается через один из этих, поэтому Сессия ходит от одного объекта к следующему; хеши, по которым ничего не читается, такие как id Оценки или версия Политики, остаются вне страниц.
 
-A text page has 4,000 UTF-16 code units by default and 8,000 at most, a list 20 items by default and 50 at most.
+Текстовая страница имеет 4 000 кодовых единиц UTF-16 по умолчанию и максимум 8 000, список — 20 элементов по умолчанию и максимум 50.
 
-The names `event/`, `task/` and `observation/` of earlier versions still resolve.
+Имена `event/`, `task/` и `observation/` более ранних версий всё ещё разрешаются.
 
-### Messages delivered to Sessions
+### Сообщения, доставляемые Сессиям
 
-These messages are steered into the main Session's turn:
+Эти сообщения направляются в ход основной Сессии:
 
-| Message | Content |
+| Сообщение | Содержимое |
 | --- | --- |
-| Candidate | Batch Trigger cards, Thread, `related_tickets`, `tickets_total`, `delivered_to`, referenced Tickets from Issue/PR links, `handed_back` reasons and the next action |
-| `follow_up` | One message as its Executor sees it, `replies_to`, receiving Tickets, and the reminder that Executors decide it while the main Session may only stop work |
-| `worker_report` | Ticket card, originating Trigger, state and summary up to 600 characters; `chars` and a read pointer when truncated |
-| `worker_attention` | Ticket card carrying the question |
+| Candidate | Карточки Триггеров пакета, Тред, `related_tickets`, `tickets_total`, `delivered_to`, Тикеты, на которые ссылаются ссылки Issue/PR, причины `handed_back` и следующее действие |
+| `follow_up` | Одно сообщение, как его видит его Исполнитель, `replies_to`, принимающие Тикеты и напоминание, что Исполнители решают его, пока основная Сессия может только останавливать работу |
+| `worker_report` | Карточка Тикета, исходный Триггер, состояние и сводка до 600 символов; `chars` и указатель чтения при обрезке |
+| `worker_attention` | Карточка Тикета, несущая вопрос |
 
-Other notices are injected without waking the main Session: `ticket_ended`, `settings_saved`, prompt saves, Trigger requeues, dropped Subscriptions and context follows. A settings notice names the block, changed paths and `read: settings/<block>`. The main Session receives no redundant notice for a save, requeue, unsubscribe or attach it performed itself.
+Другие уведомления внедряются, не пробуждая основную Сессию: `ticket_ended`, `settings_saved`, сохранения промптов, повторные постановки Триггеров, отброшенные Подписки и слежение за контекстом. Уведомление настроек называет блок, изменённые пути и `read: settings/<block>`. Основная Сессия не получает избыточного уведомления о сохранении, повторной постановке, отписке или присоединении, которое она выполнила сама.
 
-Workers receive assignments and Inputs inline. The first message includes the title, up to 1,500 characters of assignment text and the source Trigger card. Inputs carry a Trigger card with up to 600 characters and `replies_to`, or plain Input text. Read pointers appear only for truncated content.
+Воркеры получают назначения и Входы встроенными. Первое сообщение включает заголовок, до 1 500 символов текста назначения и карточку исходного Триггера. Входы несут карточку Триггера с до 600 символов и `replies_to` или простой текст Входа. Указатели чтения появляются только для обрезанного содержимого.
 
-### Panel-only actions
+### Действия только панели
 
-There is no tool for dismissing an unavailable Decision, rerunning setup, refreshing Source display names, or sending an Executor-owned human follow-up to Eval. The last action is deliberately refused by `orchestrator_trigger_requeue`. Other panel actions have equivalent tools.
+Нет инструмента для отклонения Решения unavailable, повторного запуска настройки, обновления отображаемых имён Источника или отправки принадлежащего Исполнителю человеческого фоллоу-апа на Оценку. Последнее действие намеренно отклоняется через `orchestrator_trigger_requeue`. У других действий панели есть эквивалентные инструменты.
 
-Most built-in instructions live in `prompts/*.md`, with one sentence per line joined by `promptFile`. Source skills live in `skills/dsh-superagent-*/SKILL.md`. Tool descriptions and fixed notices such as restart recovery notes remain in code. Assessment instructions live only in `prompts/admission.md`.
+Большинство встроенных инструкций живут в `prompts/*.md`, с одним предложением на строку, объединяемым через `promptFile`. Навыки Источников живут в `skills/dsh-superagent-*/SKILL.md`. Описания инструментов и фиксированные уведомления, такие как заметки о восстановлении после перезапуска, остаются в коде. Инструкции по оценке живут только в `prompts/admission.md`.
 
-`tests/model-surface.spec.ts` checks these surfaces for drift. [004 Prompts](004-prompts.md) explains the team's editable parts.
+`tests/model-surface.spec.ts` проверяет эти поверхности на дрейф. [004 Prompts](004-prompts.md) объясняет редактируемые части команды.
 
 ## Configuration reload
 
-Every plugin configuration key except `stateDir` is volatile. The panel's Deployment settings and DeepSeek Harness's Plugin Manager edit them through DeepSeek Harness's configuration form; the host writes `cordis.patch.yml` and updates the values in place, and dsh-superagent reads each limit when it uses it, so a change applies without a restart.
+Каждый ключ конфигурации плагина, кроме `stateDir`, изменяем на лету. Настройки Deployment панели и Plugin Manager DeepSeek Harness редактируют их через форму конфигурации DeepSeek Harness; хост пишет `cordis.patch.yml` и обновляет значения на месте, а dsh-superagent читает каждый лимит, когда его использует, поэтому изменение применяется без перезапуска.
 
-A settings save that changes a Source field setup reads, such as an account's CLI, and any save while setup waits, restarts dsh-superagent. DeepSeek Harness's settings service does not serve the entry during that restart, so after its own restart dsh-superagent asks it to read the entry again, and an open form becomes editable again.
+Сохранение настройки, меняющее поле Источника, которое читает настройка, например CLI аккаунта, и любое сохранение, пока настройка ожидает, перезапускает dsh-superagent. Сервис настроек DeepSeek Harness не обслуживает запись во время этого перезапуска, поэтому после своего собственного перезапуска dsh-superagent просит его снова прочитать запись, и открытая форма снова становится редактируемой.
 
-## Reviewing a change against real data
+## Проверка изменения на реальных данных
 
-Point `DSH_HOME` at a temporary directory and create a new profile there. Copy the database from a backup, disable every Source, pause processing and remove the main Session id. Give the GitHub and Feishu CLIs read-only stand-ins.
+Укажите `DSH_HOME` на временный каталог и создайте там новый профиль. Скопируйте базу данных из резервной копии, отключите каждый Источник, приостановите обработку и удалите id основной Сессии. Дайте CLI GitHub и Feishu подставные версии только для чтения.
 
-## Open questions
+## Открытые вопросы
 
-- Trust: which Trigger fields are trusted, such as the Source's actor and Thread membership, and which are not, such as the body and quotes.
-- Deployment isolation: the agent's profile on its own pinned DeepSeek Harness installation, so upgrading DeepSeek Harness elsewhere does not break it.
+- Доверие: какие поля Триггера доверенные, например действующее лицо Источника и принадлежность Треду, а какие нет, например тело и цитаты.
+- Изоляция развёртывания: профиль агента на собственной закреплённой установке DeepSeek Harness, чтобы обновление DeepSeek Harness в другом месте его не ломало.

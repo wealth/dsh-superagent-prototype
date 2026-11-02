@@ -1,36 +1,36 @@
-# 008 Cookbook
+# 008 Поваренная книга
 
-This cookbook shows how to extend dsh-superagent. It uses the terms in [001 Domain model](001-domain.md) and [002 Authorization](002-authorization.md), and the components in [007 Architecture](007-architecture.md).
+Эта поваренная книга показывает, как расширять dsh-superagent. Она использует термины из [001 Domain model](001-domain.md) и [002 Authorization](002-authorization.md) и компоненты из [007 Architecture](007-architecture.md).
 
-## Add a Source
+## Добавить Источник
 
-This recipe implements a Source kind called `webhook`. It reads an imaginary message queue through an invented CLI, `hookq`, and converts messages to Triggers. All other interfaces are part of dsh-superagent.
+Этот рецепт реализует вид Источника под названием `webhook`. Он читает воображаемую очередь сообщений через выдуманный CLI, `hookq`, и преобразует сообщения в Триггеры. Все остальные интерфейсы — часть dsh-superagent.
 
-The implementation has four responsibilities: translate events, define receiving and authorization rules, provide replies and context, and maintain a polling loop. The numbered steps build those pieces in order.
+У реализации четыре обязанности: переводить события, определять правила приёма и авторизации, предоставлять ответы и контекст, и поддерживать цикл опроса. Пронумерованные шаги строят эти части по порядку.
 
-The example assumes this CLI contract:
+Пример предполагает такой контракт CLI:
 
-- `hookq pull --after <n> --json` prints the messages after position `n`, oldest first: `{"me": "<the agent's id on the queue>", "items": […], "next": <position>}`. An item has `id`, `conversation`, `thread` (the id of the message that started its thread, absent on that message), `sender` with `id` and `bot`, `mentions_me`, `text`, `at` and `url`.
-- `hookq reply --conversation <id> --to <message id> --key <key> --text <text>` replies under a message, once per key. For a conversation that was deleted it fails with `{"error": {"code": 410, "message": "…"}}` on standard error.
-- `hookq thread --conversation <id> --root <message id> --json`, with `--after <cursor>` for a later page, prints a page of a thread, oldest first: `{"items": […], "next": "<cursor>"}`, without `next` on the last page.
+- `hookq pull --after <n> --json` печатает сообщения после позиции `n`, начиная со старейших: `{"me": "<the agent's id on the queue>", "items": […], "next": <position>}`. У элемента есть `id`, `conversation`, `thread` (id сообщения, начавшего его тред, отсутствующий на этом сообщении), `sender` с `id` и `bot`, `mentions_me`, `text`, `at` и `url`.
+- `hookq reply --conversation <id> --to <message id> --key <key> --text <text>` отвечает под сообщением, один раз на ключ. Для удалённой беседы он завершается с `{"error": {"code": 410, "message": "…"}}` в стандартный вывод ошибок.
+- `hookq thread --conversation <id> --root <message id> --json`, с `--after <cursor>` для более поздней страницы, печатает страницу треда, начиная со старейших: `{"items": […], "next": "<cursor>"}`, без `next` на последней странице.
 
-Put the kind and its plugin entry in `src/sources/webhook.ts`, following `src/sources/github.ts`. If the Source grows, split translation, Channel and polling code into separate modules as the Feishu Source does.
+Поместите вид и его точку входа плагина в `src/sources/webhook.ts`, следуя `src/sources/github.ts`. Если Источник растёт, разделите код трансляции, Канала и опроса на отдельные модули, как это делает Источник Feishu.
 
-### 1. Map the events onto the domain
+### 1. Сопоставьте события с предметной областью
 
-Choose stable mappings before writing code. Trigger ids, Thread ids and Channel addresses are persisted, so changing them later can disconnect existing records.
+Выберите стабильные сопоставления до написания кода. Id Триггеров, id Тредов и адреса Каналов сохраняются на диск, поэтому их изменение позже может разорвать существующие записи.
 
-| Concept | For the webhook queue |
+| Понятие | Для очереди webhook |
 | --- | --- |
-| Trigger | One message |
-| Thread | A message and the replies to it in one conversation: `<conversation>:<id of the first message>` |
-| Actor | The sender's id on the queue, as the allowed list names it |
-| Channel address | The conversation and the message a reply goes under |
-| Receiving scope | A conversation, with its own row in the admission table |
+| Триггер | Одно сообщение |
+| Тред | Сообщение и ответы на него в одной беседе: `<conversation>:<id of the first message>` |
+| Действующее лицо | Id отправителя в очереди, как его называет список разрешённых |
+| Адрес Канала | Беседа и сообщение, под которым идёт ответ |
+| Область приёма | Беседа, со своей строкой в таблице приёма |
 
-### 2. Configuration: schema, fields, facts and health
+### 2. Конфигурация: schema, fields, facts и health
 
-The module imports what the steps below use:
+Модуль импортирует то, что используют шаги ниже:
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
@@ -72,15 +72,15 @@ export const webhookKind: SourceKind<WebhookConfig> = {
 }
 ```
 
-- `kind` is the stable Source id. It appears in Trigger `source`, Thread-key prefixes, the `source:webhook` settings block and the Source Policy.
-- `schema` validates stored configuration and supplies defaults. Before an operator saves an instance, the registry creates an enabled instance from those defaults. Make defaults receive nothing; this example defaults to no conversations.
-- `fields` generates the Source settings form without custom panel code. A `rows` field edits entries keyed by its first column; `advanced` hides less common settings. Implement `refreshLabels` if the Source can resolve ids to display names. Save those names under `KV.sources.labels(kind)`. Columns with `choose` and `refresh` can then offer them.
-- Optional `facts(deployment)` displays values derived by setup, such as the account behind a CLI. Setup currently checks only GitHub and Feishu fields listed in `SETUP_FIELDS`, so this example supplies no facts.
-- `health` declares the Source's health entries, initially `starting`. Registration claims each name and refuses collisions with entries such as `runtime`, `reply`, `worker` or effect kinds. Use the kind's name and reserve `sync:<id>` for Policy syncs. An `error` makes the status script exit 2 and the hourly check notify the operator, so report it only when human action may be needed.
+- `kind` — стабильный id Источника. Он появляется в `source` Триггера, префиксах ключей Треда, блоке настроек `source:webhook` и Политике Источника.
+- `schema` проверяет сохранённую конфигурацию и подставляет значения по умолчанию. Прежде чем оператор сохранит экземпляр, реестр создаёт включённый экземпляр из этих значений по умолчанию. Делайте значения по умолчанию приёмом ничего; этот пример по умолчанию не имеет бесед.
+- `fields` генерирует форму настроек Источника без пользовательского кода панели. Поле `rows` редактирует записи с ключом по первому столбцу; `advanced` скрывает менее частые настройки. Реализуйте `refreshLabels`, если Источник может разрешать id в отображаемые имена. Сохраните эти имена под `KV.sources.labels(kind)`. Столбцы с `choose` и `refresh` тогда могут их предлагать.
+- Опциональный `facts(deployment)` показывает значения, выведенные настройкой, например аккаунт за CLI. Настройка в настоящее время проверяет только поля GitHub и Feishu, перечисленные в `SETUP_FIELDS`, поэтому этот пример не даёт фактов.
+- `health` объявляет записи здоровья Источника, изначально `starting`. Регистрация заявляет каждое имя и отказывает при коллизиях с записями, такими как `runtime`, `reply`, `worker` или видами эффектов. Используйте имя вида и резервируйте `sync:<id>` для синхронизаций Политики. Ошибка `error` заставляет скрипт `status` завершиться с кодом 2, а ежечасную проверку уведомить оператора, поэтому сообщайте о ней только тогда, когда может потребоваться действие человека.
 
-### 3. Translate a message into a Trigger
+### 3. Переведите сообщение в Триггер
 
-Validate CLI responses before converting them:
+Проверяйте ответы CLI до их преобразования:
 
 ```ts
 /** One message as `hookq pull` and `hookq thread` print it. */
@@ -117,22 +117,22 @@ export function webhookTrigger(message: QueueMessage, me: string): Trigger | und
 }
 ```
 
-- **Stable ids.** Derive the Trigger id from the queue id through `key`. `Engine.receive` returns `duplicate` for stored ids, and duplicate accepts create only one Ticket. Re-reading messages is therefore safe. To treat edits as new events, include an edit version in the id, as GitHub does with comment `updated_at`.
-- **Threads.** The first Thread is primary and owns the Eval. Additional Threads add Correlation context. The Source chooses the id; its full key is `webhook:<id>`.
-- **Sender.** Use Source-native ids in `actor`. Set `human: false` for bots and CI. Listed bots can only become inferred candidates. An empty actor id, as for CI, uses the admission cell for unlisted, unaddressed senders. Set `addressed` to `mention` or `direct` only when the message actually addresses the agent; this gives an allowed person's message explicit strength. Never produce a Trigger for the agent's own message.
-- **Reply destination and metadata.** `channel` identifies where replies go; `url` links to the source message. `channel.thread` groups messages for ordered delivery: a Ticket's later messages wait behind its earlier ones until an earlier message has failed three times. Other Tickets do not wait. Keep Source-specific fields in `meta`, such as the receiving conversation and Thread root. Both `meta` and `text` are untrusted data, not authorization.
+- **Стабильные id.** Выводите id Триггера из id очереди через `key`. `Engine.receive` возвращает `duplicate` для сохранённых id, а дублирующиеся принятия создают только один Тикет. Повторное чтение сообщений поэтому безопасно. Чтобы считать правки новыми событиями, включите версию правки в id, как это делает GitHub с `updated_at` комментария.
+- **Треды.** Первый Тред основной и владеет Оценкой. Дополнительные Треды добавляют контекст Correlation. Источник выбирает id; его полный ключ — `webhook:<id>`.
+- **Отправитель.** Используйте нативные для Источника id в `actor`. Задавайте `human: false` для ботов и CI. Перечисленные боты могут становиться только предполагаемыми кандидатами. Пустой id действующего лица, как для CI, использует ячейку приёма для не перечисленных, не обращающихся отправителей. Задавайте `addressed` как `mention` или `direct`, только когда сообщение действительно обращается к агенту; это даёт сообщению разрешённого человека явную силу. Никогда не производите Триггер для собственного сообщения агента.
+- **Адресат ответа и метаданные.** `channel` определяет, куда идут ответы; `url` ссылается на исходное сообщение. `channel.thread` группирует сообщения для упорядоченной доставки: более поздние сообщения Тикета ждут за своими более ранними, пока более раннее не провалится три раза. Другие Тикеты не ждут. Держите специфичные для Источника поля в `meta`, например принимающую беседу и корень Треда. И `meta`, и `text` — недоверенные данные, а не авторизация.
 
-Agents can read the new kind through `orchestrator_read trigger/<id>` and `thread/<key>`. These expose message text, disposition and neighboring Triggers. A new kind does not automatically receive a built-in skill, resources for original service records or pull-request binding.
+Агенты могут читать новый вид через `orchestrator_read trigger/<id>` и `thread/<key>`. Они показывают текст сообщения, положение и соседние Триггеры. Новый вид не получает автоматически встроенный навык, ресурсы для записей исходного сервиса или привязку pull request'ов.
 
-Text search works without extra code. Implement `find(query)` when people use Source-specific references such as message ids, URLs or `#12`. Return the Thread keys and search terms those references identify:
+Текстовый поиск работает без дополнительного кода. Реализуйте `find(query)`, когда люди используют специфичные для Источника ссылки, такие как id сообщений, URL или `#12`. Возвращайте ключи Тредов и условия поиска, которые эти ссылки определяют:
 
 ```ts
   find: query => ({ threads: [], terms: [...new Set(query.match(/\bm[0-9]+\b/g) ?? [])] }),
 ```
 
-Here a queue message id in the query, such as `m42`, searches the Triggers for it.
+Здесь id сообщения очереди в запросе, например `m42`, ищет по нему Триггеры.
 
-### 4. What the Source receives: scope
+### 4. Что Источник принимает: scope
 
 ```ts
   scope({ meta }, config) {
@@ -142,13 +142,13 @@ Here a queue message id in the query, such as `m42`, searches the Triggers for i
   },
 ```
 
-The Engine calls `scope` through `SourceRegistry` for each incoming Trigger. Out-of-scope messages are stored as filtered with their reason and create no Thread. Pass messages to `receive` rather than silently dropping them in the polling loop, so the panel can explain filtering.
+Engine вызывает `scope` через `SourceRegistry` для каждого входящего Триггера. Сообщения вне области сохраняются как отфильтрованные с их причиной и не создают Тред. Передавайте сообщения в `receive`, а не молча отбрасывайте их в цикле опроса, чтобы панель могла объяснить фильтрацию.
 
-`observed: true` means the Source receives unaddressed messages in that scope, allowing admission-table decisions for them. `row` identifies the corresponding admission row.
+`observed: true` означает, что Источник принимает не адресованные сообщения в этой области, позволяя для них решения таблицы приёма. `row` определяет соответствующую строку приёма.
 
-Revalidation calls `scope` with the Mandate's stored metadata. Make it depend only on `meta` and configuration. Resuming requires `listened`, not `observed`. Without `scope`, a kind receives every Trigger it produces but observes none.
+Перепроверка вызывает `scope` с сохранёнными метаданными Мандата. Делайте его зависимым только от `meta` и конфигурации. Возобновление требует `listened`, не `observed`. Без `scope` вид принимает каждый произведённый им Триггер, но не наблюдает ни один.
 
-### 5. Replies: the Channel
+### 5. Ответы: Канал
 
 ```ts
   channel: {
@@ -174,12 +174,12 @@ export async function sendWebhook(host: Pick<SourceContext, 'commands'>, message
 }
 ```
 
-- **Idempotent sends.** Outbox calls `SourceRegistry.send`, which invokes `channel.send`. Messages wait while the Source plugin is unloaded. A send may fail after the remote service received it, so retries must not duplicate messages. Use `message.id` as an idempotency key: `hookq` supports `--key`; GitHub stores a hidden comment marker; Feishu accepts an idempotency key.
-- **Permanent versus retryable failure.** Return `sent` on success and `gone` only when delivery is permanently impossible, such as the example's 410. A gone message is retained as dropped and never queued again; it appears in `GET sources` and on the Source page. Throw for other failures so Outbox retries after 5 seconds, doubling to 300 seconds. `CliError.code` is the code reported by the CLI output.
-- **Allowed destinations.** `allowed(address, config)` checks only the saved address and current configuration. Put every required fact in the address; for example, Feishu records whether the chat is direct. A destination no longer listened to is dropped, while a disabled Source leaves messages waiting. Without `allowed`, all addresses are permitted while the Source is enabled.
-- **Links.** `link(address, links)` returns the URL and label the panel displays through `SourceRegistry.link`.
+- **Идемпотентная отправка.** Outbox вызывает `SourceRegistry.send`, который вызывает `channel.send`. Сообщения ждут, пока плагин Источника выгружен. Отправка может провалиться после того, как удалённый сервис её получил, поэтому повторы не должны дублировать сообщения. Используйте `message.id` как ключ идемпотентности: `hookq` поддерживает `--key`; GitHub хранит скрытый маркер комментария; Feishu принимает ключ идемпотентности.
+- **Постоянный против повторяемого отказа.** Возвращайте `sent` при успехе и `gone` только тогда, когда доставка навсегда невозможна, как 410 в примере. Пропавшее сообщение сохраняется как отброшенное и никогда снова не ставится в очередь; оно появляется в `GET sources` и на странице Источника. Бросайте исключение для других неудач, чтобы Outbox повторил через 5 секунд, удваивая до 300 секунд. `CliError.code` — это код, сообщаемый выводом CLI.
+- **Разрешённые адресаты.** `allowed(address, config)` проверяет только сохранённый адрес и текущую конфигурацию. Помещайте каждый требуемый факт в адрес; например, Feishu записывает, является ли чат прямым. Адресат, которого больше не слушают, отбрасывается, а отключённый Источник оставляет сообщения ждущими. Без `allowed` все адреса разрешены, пока Источник включён.
+- **Ссылки.** `link(address, links)` возвращает URL и метку, которые панель показывает через `SourceRegistry.link`.
 
-### 6. Thread context for assessments
+### 6. Контекст Треда для оценок
 
 ```ts
   threadContext: {
@@ -195,21 +195,21 @@ export async function sendWebhook(host: Pick<SourceContext, 'commands'>, message
   },
 ```
 
-Proactive assessment needs the conversation around a Trigger. `orchestrator_eval` reads an initial window; `orchestrator_eval_read` expands pages, the root or the parent message. Implement the optional `threadContext` interface to provide these reads:
+Проактивной оценке нужна беседа вокруг Триггера. `orchestrator_eval` читает начальное окно; `orchestrator_eval_read` раскрывает страницы, корень или родительское сообщение. Реализуйте опциональный интерфейс `threadContext`, чтобы предоставить эти чтения:
 
-- `read(commands, trigger, part, cursor, config)` returns a `ContextPart`. Its `messages` use `ContextMessage`: `{id, from, at, text}` plus applicable `bot`, `deleted`, `reply_to`, `url`, `path` and `line` fields. `next` is omitted on the last page. `body` is the content shown to the assessing Session, here the same messages. Optional `status` can describe special results such as Feishu's `chat_neighbours`. `part` is `thread`, `root` or `parent`.
-- `messageId(trigger)` finds the Trigger's own message among them.
-- `images(text)` and `image(…)` are for a kind whose messages carry images, as Feishu's do; the example leaves them out.
+- `read(commands, trigger, part, cursor, config)` возвращает `ContextPart`. Его `messages` используют `ContextMessage`: `{id, from, at, text}` плюс применимые поля `bot`, `deleted`, `reply_to`, `url`, `path` и `line`. `next` опускается на последней странице. `body` — это содержимое, показываемое оценивающей Сессии, здесь те же сообщения. Опциональный `status` может описывать особые результаты, такие как `chat_neighbours` Feishu. `part` — это `thread`, `root` или `parent`.
+- `messageId(trigger)` находит собственное сообщение Триггера среди них.
+- `images(text)` и `image(…)` предназначены для вида, чьи сообщения несут изображения, как у Feishu; пример их опускает.
 
-A kind without `threadContext` gives assessments no Thread context; the Trigger's own text stays readable.
+Вид без `threadContext` не даёт оценкам контекста Треда; собственный текст Триггера остаётся читаемым.
 
-If messages reply to earlier messages, add `repliesTo(trigger)`. It returns the corresponding Trigger id, allowing follow-up notices and worker Inputs to show the replied-to message when stored. For example, if `hookq` supplies `reply_to` and translation stores it as `meta.replyTo`:
+Если сообщения отвечают на более ранние, добавьте `repliesTo(trigger)`. Он возвращает соответствующий id Триггера, позволяя уведомлениям фоллоу-апов и Входам воркера показывать сообщение, на которое отвечено, когда оно сохранено. Например, если `hookq` поставляет `reply_to`, а трансляция хранит его как `meta.replyTo`:
 
 ```ts
   repliesTo: trigger => typeof trigger.meta.replyTo === 'string' ? key('webhook', trigger.meta.replyTo) : undefined,
 ```
 
-### 7. Who may ask: the Source's part of the Policy
+### 7. Кто может просить: часть Источника в Политике
 
 ```ts
   policy: {
@@ -227,13 +227,13 @@ If messages reply to earlier messages, add `repliesTo(trigger)`. It returns the 
   },
 ```
 
-- `schema` validates the Source Policy, including `allowed` sender ids. Id comparison is case-insensitive. Admission tables are validated separately and shared across kinds. This Policy part is saved at `policy.sources.webhook` and contributes to the Policy version.
-- `fields` generates the form under **Eval → On each Source**, beginning with `allowed`. `explicit` explains how to address the agent. Optional `unnamed: {person, bot}` supplies display labels for opaque ids such as Feishu's `ou_…`; this example omits it because queue ids are readable names.
-- `rows(config)` lists admission scopes and their available cells. Each row id must match the `row` returned by `scope`. Unaddressed-message cells are available only where the Source observes those messages. Kinds without `rows` use default cells.
-- Optional `bots` lists bots eligible for inferred candidacy, using the same entry shape as `allowed`. Without it, no bot is admitted.
-- Optional `sync: {label, ready(part), run(host, part, signal)}` refreshes membership at startup and on **Sync now**. Feishu uses chat membership. Failures appear under `sync:<id>` and retry after one minute, doubling to one hour until successful.
+- `schema` проверяет Политику Источника, включая id отправителей `allowed`. Сравнение id нечувствительно к регистру. Таблицы приёма проверяются отдельно и разделяются между видами. Эта часть Политики сохраняется в `policy.sources.webhook` и вносит вклад в версию Политики.
+- `fields` генерирует форму в разделе **Eval → On each Source**, начиная с `allowed`. `explicit` объясняет, как обращаться к агенту. Опциональный `unnamed: {person, bot}` поставляет отображаемые метки для непрозрачных id, таких как `ou_…` Feishu; этот пример его опускает, потому что id очереди — читаемые имена.
+- `rows(config)` перечисляет области приёма и их доступные ячейки. Каждый id строки должен соответствовать `row`, возвращаемому `scope`. Ячейки не адресованных сообщений доступны только там, где Источник наблюдает эти сообщения. Виды без `rows` используют ячейки по умолчанию.
+- Опциональный `bots` перечисляет ботов, допущенных к предполагаемому кандидатству, используя ту же форму записи, что и `allowed`. Без него ни один бот не допускается.
+- Опциональный `sync: {label, ready(part), run(host, part, signal)}` обновляет состав при запуске и по **Sync now**. Feishu использует состав чата. Неудачи появляются под `sync:<id>` и повторяются через минуту, удваиваясь до одного часа, пока не удастся.
 
-### 8. Variables for the Executor
+### 8. Переменные для Исполнителя
 
 ```ts
   environment: {
@@ -245,11 +245,11 @@ If messages reply to earlier messages, add `repliesTo(trigger)`. It returns the 
   },
 ```
 
-Execution settings show declared `variables` beside the prepare command even when the Source is disabled. While enabled, `values` supplies Ticket-specific values using deployment, configuration and the originating Trigger.
+Настройки исполнения показывают объявленные `variables` рядом с командой подготовки, даже когда Источник отключён. Пока он включён, `values` поставляет специфичные для Тикета значения, используя развёртывание, конфигурацию и исходный Триггер.
 
-The prepare command reads environment variables; the worker reads their values in its instructions. Use the `DSH_SUPERAGENT_<KIND>_…` prefix, return an empty value for Tickets from another Source, and never include credentials.
+Команда подготовки читает переменные окружения; воркер читает их значения в своих инструкциях. Используйте префикс `DSH_SUPERAGENT_<KIND>_…`, возвращайте пустое значение для Тикетов из другого Источника и никогда не включайте учётные данные.
 
-### 9. The plugin entry and its loop
+### 9. Точка входа плагина и его цикл
 
 ```ts
 export const name = 'dsh-superagent-webhook'
@@ -267,7 +267,7 @@ export function apply(ctx: Context): void {
 }
 ```
 
-The plugin injects `orchestrator`. Its first effect registers the kind and unregisters it on disposal. The second runs the polling loop with a `SourceContext`. Disposal aborts the loop and awaits completion, including during application stop or restart.
+Плагин внедряет `orchestrator`. Его первый эффект регистрирует вид и отменяет регистрацию при удалении. Второй запускает цикл опроса с `SourceContext`. Удаление прерывает цикл и ждёт завершения, в том числе во время остановки или перезапуска приложения.
 
 ```ts
 async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
@@ -318,29 +318,29 @@ export async function pollQueue(ctx: SourceContext, signal: AbortSignal): Promis
 ```
 
 
-- **Setup and the switch.** Wait for `ctx.ready`, and read nothing while `ctx.configured()` is false. Read `ctx.config(kind)` on every round: it is undefined while the Source is off.
-- **Cursors.** Store read positions in `ctx.state` using typed entries in `KV` (`src/kv.ts`), such as `webhook: {cursor: record<number>('webhook-cursor')}`. `tests/store.spec.ts` requires key literals to appear only in that registry. External packages can define keys with exported `record` and `family`. Setting `undefined` removes a record; `ctx.atomic` groups writes in a transaction.
+- **Настройка и переключатель.** Ждите `ctx.ready` и не читайте ничего, пока `ctx.configured()` ложен. Читайте `ctx.config(kind)` на каждом раунде: он не определён, пока Источник выключен.
+- **Курсоры.** Храните позиции чтения в `ctx.state`, используя типизированные записи в `KV` (`src/kv.ts`), такие как `webhook: {cursor: record<number>('webhook-cursor')}`. `tests/store.spec.ts` требует, чтобы литералы ключей появлялись только в этом реестре. Внешние пакеты могут определять ключи через экспортируемые `record` и `family`. Присвоение `undefined` удаляет запись; `ctx.atomic` группирует записи в транзакцию.
 
-  Advance a cursor only after every covered Trigger has been stored. An interrupted round leaves the cursor unchanged; stable ids make replay safe. For timestamp cursors, `cursorAt(started)` from `src/sources/poll.ts` subtracts five seconds to allow for late remote writes.
-- **Thread metadata.** After receiving a Trigger, call `ctx.threads.describe(key, {label, url, facts})` to populate its display information. `ctx.threads.patch(key, meta)` delegates to `threads.patchMeta`, setting Source-owned keys or removing them when the value is `undefined`. Both ignore absent Threads, including those of filtered Triggers.
-- **Per-item errors.** Count malformed items and continue rather than failing the entire batch. `validItems(item, list, tally)` in `src/infra/commands.ts` supports this pattern. For independently polled Threads, use `pollThreads` from `src/sources/poll.ts`; it records each failure as `pollError`. Its `polled` predicate keeps live subscriptions and a two-week window after the later of the last Trigger and Ticket end.
-- **Health.** Write only declared entries through `ctx.report`. `health(state, code, values)` provides fixed messages such as `setupPending`, `sourceOff` and `pollFailures`. Count consecutive failures before reporting `error`.
-- **Abort.** Pass the signal to `ctx.commands.withSignal(signal)` and to `delay`, and check it between items, so a stop or a restart ends the loop at once.
+  Продвигайте курсор только после того, как каждый покрытый Триггер сохранён. Прерванный раунд оставляет курсор неизменным; стабильные id делают повтор безопасным. Для курсоров по времени `cursorAt(started)` из `src/sources/poll.ts` вычитает пять секунд, чтобы учесть поздние записи удалённой стороны.
+- **Метаданные Треда.** После приёма Триггера вызовите `ctx.threads.describe(key, {label, url, facts})`, чтобы заполнить его отображаемую информацию. `ctx.threads.patch(key, meta)` делегирует `threads.patchMeta`, задавая принадлежащие Источнику ключи или удаляя их, когда значение `undefined`. Оба игнорируют отсутствующие Треды, включая Треды отфильтрованных Триггеров.
+- **Ошибки на элемент.** Считайте неполадные элементы и продолжайте, а не проваливайте весь пакет. `validItems(item, list, tally)` в `src/infra/commands.ts` поддерживает этот шаблон. Для независимо опрашиваемых Тредов используйте `pollThreads` из `src/sources/poll.ts`; он записывает каждую неудачу как `pollError`. Его предикат `polled` хранит живые подписки и окно в две недели после более позднего из последнего Триггера и завершения Тикета.
+- **Здоровье.** Пишите только объявленные записи через `ctx.report`. `health(state, code, values)` даёт фиксированные сообщения, такие как `setupPending`, `sourceOff` и `pollFailures`. Считайте последовательные неудачи до сообщения `error`.
+- **Прерывание.** Передавайте сигнал в `ctx.commands.withSignal(signal)` и в `delay`, и проверяйте его между элементами, чтобы остановка или перезапуск сразу завершали цикл.
 
-This example does not send Source-originated notices. A Source that needs them calls `ctx.notify`; Outbox delivers them like other replies.
+Этот пример не отправляет уведомления, порождённые Источником. Источник, которому они нужны, вызывает `ctx.notify`; Outbox доставляет их как другие ответы.
 
-It also does not bind Threads to Ticket completion. Use `ctx.tickets.bindThread` and `threadClosed` only when a Source's Thread lifecycle determines whether work is done, as GitHub pull requests do. The Engine still decides when the Ticket ends.
+Он также не привязывает Треды к завершению Тикета. Используйте `ctx.tickets.bindThread` и `threadClosed`, только когда жизненный цикл Треда Источника определяет, завершена ли работа, как это делают pull request'ы GitHub. Engine всё равно решает, когда Тикет завершается.
 
-### 10. Register the plugin
+### 10. Зарегистрируйте плагин
 
-Build the module as its own entry in `tsdown.config.ts`:
+Соберите модуль как собственную точку входа в `tsdown.config.ts`:
 
 ```ts
 entry: { index: 'src/index.ts', 'github-watch': 'src/sources/github.ts', 'feishu-watch': 'src/sources/feishu.ts',
   'webhook-watch': 'src/sources/webhook.ts' },
 ```
 
-Then export the built file in `package.json` by adding `"./webhook-watch": "./lib/webhook-watch.js"` to `exports`, and add the plugin to the `insert` list of the bundle's `cordis.patch.yml`, disabled, as Feishu is:
+Затем экспортируйте собранный файл в `package.json`, добавив `"./webhook-watch": "./lib/webhook-watch.js"` к `exports`, и добавьте плагин в список `insert` в `cordis.patch.yml` бандла, отключённым, как Feishu:
 
 ```yaml
     - id: dsh-superagent-webhook
@@ -348,15 +348,15 @@ Then export the built file in `package.json` by adding `"./webhook-watch": "./li
       disabled: true
 ```
 
-Enable the plugin in a profile's `cordis.patch.yml` with `id: dsh-superagent-webhook` and `disabled: false`. Build and restart. The new Source appears in Sources settings and under **Eval → On each Source**.
+Включите плагин в `cordis.patch.yml` профиля с `id: dsh-superagent-webhook` и `disabled: false`. Соберите и перезапустите. Новый Источник появляется в настройках Sources и в разделе **Eval → On each Source**.
 
-Add its module and spec to the module and test tables in [007 Architecture](007-architecture.md). `tests/docs.spec.ts` checks that both indexes are complete.
+Добавьте его модуль и спец-файл в таблицы модулей и тестов в [007 Architecture](007-architecture.md). `tests/docs.spec.ts` проверяет, что оба указателя полны.
 
-### 11. Tests
+### 11. Тесты
 
-Create `tests/webhook.spec.ts` using the pattern in `tests/sources.spec.ts`: a real Store in a temporary directory, a `SourceRegistry` with `HealthBoard`, an Engine with stand-in ports, and a `SourceContext` from `sourceContextOf`.
+Создайте `tests/webhook.spec.ts`, используя шаблон из `tests/sources.spec.ts`: настоящий Store во временном каталоге, `SourceRegistry` с `HealthBoard`, Engine с заглушечными портами и `SourceContext` из `sourceContextOf`.
 
-Mock CLI calls by spying on `Commands.run`. Also spy on `withSignal`, because it normally returns a new `Commands` instance.
+Сымитируйте вызовы CLI, шпионя за `Commands.run`. Также шпионьте за `withSignal`, потому что он обычно возвращает новый экземпляр `Commands`.
 
 ```ts
 function host(overrides: Partial<SourceContextDeps> = {}) {
@@ -400,26 +400,26 @@ it('takes in what the queue holds after the cursor, once, and moves the cursor a
 })
 ```
 
-`message(id, fields)` builds a queue item. Cover at least:
+`message(id, fields)` строит элемент очереди. Покройте как минимум:
 
-- the translation: a stable id, the Thread, the actor, `human` and `addressed`, and no Trigger for the agent's own message;
-- a round: Triggers stored once, one outside the scope `filtered`, the cursor moved after them, an allowed sender's mention evaluated as `explicit`;
-- a round cut short, which keeps its cursor;
-- `send`: `sent`, `gone` for a 410 only, and a throw for any other failure, with the CLI's error built by `commandError`;
-- the Thread context: the messages of a page and the cursor of the next, as `tests/registry.spec.ts` reads a kind's Threads through `SourceRegistry.threadContext`;
-- the plugin: `apply` registers the kind and reports `setupPending` while setup waits, its disposers unregister the kind, and a failure that escapes the loop becomes the Source's health instead of an unhandled rejection;
-- the Source's part of the Policy and its admission rows, as `tests/registry.spec.ts` and `tests/policy.spec.ts` check the Feishu Source's.
+- трансляцию: стабильный id, Тред, действующее лицо, `human` и `addressed`, и отсутствие Триггера для собственного сообщения агента;
+- раунд: Триггеры сохраняются один раз, один вне области `filtered`, курсор продвигается за ними, упоминание разрешённого отправителя оценивается как `explicit`;
+- оборванный раунд, который сохраняет свой курсор;
+- `send`: `sent`, `gone` только для 410 и бросок для любой другой неудачи, с ошибкой CLI, построенной через `commandError`;
+- контекст Треда: сообщения страницы и курсор следующей, как `tests/registry.spec.ts` читает Треды вида через `SourceRegistry.threadContext`;
+- плагин: `apply` регистрирует вид и сообщает `setupPending`, пока настройка ждёт, его уборщики отменяют регистрацию вида, а неудача, выходящая из цикла, становится здоровьем Источника вместо необработанного отклонения;
+- часть Источника в Политике и его строки приёма, как `tests/registry.spec.ts` и `tests/policy.spec.ts` проверяют часть Источника Feishu.
 
-### Checklist
+### Контрольный список
 
-1. Map Triggers, Threads, actors, Channel addresses and receiving scopes.
-2. Write the kind: `schema`, `fields`, `health`, and `facts` if setup derives any.
-3. Translate events into Triggers with stable ids, and drop the agent's own.
-4. Decide what the Source receives in `scope`, from `meta` alone.
-5. Give it a Channel whose `send` posts each message once and answers `gone` only when the conversation can never receive it.
-6. Give assessments its Thread context, if it can read a Thread.
-7. Give it a part of the Policy with `allowed` and the admission rows.
-8. Register its execution environment variables.
-9. Write the plugin entry and a loop that waits for setup, follows the switch, moves cursors after `receive`, keeps errors per item, reports health and stops on abort; name the cursors in `KV`.
-10. Add the build entry, the export and the `cordis.patch.yml` insert, and list the module and its spec in the tables of 007.
-11. Test it as `tests/sources.spec.ts` tests the other Sources.
+1. Сопоставьте Триггеры, Треды, действующих лиц, адреса Каналов и области приёма.
+2. Напишите вид: `schema`, `fields`, `health` и `facts`, если настройка что-то выводит.
+3. Переведите события в Триггеры со стабильными id и отбросьте собственные сообщения агента.
+4. Решите, что Источник принимает в `scope`, только из `meta`.
+5. Дайте ему Канал, чей `send` публикует каждое сообщение один раз и отвечает `gone`, только когда беседа никогда не сможет его принять.
+6. Дайте оценкам его контекст Треда, если он может читать Тред.
+7. Дайте ему часть Политики с `allowed` и строками приёма.
+8. Зарегистрируйте его переменные среды исполнения.
+9. Напишите точку входа плагина и цикл, который ждёт настройку, следует переключателю, продвигает курсоры после `receive`, хранит ошибки на элемент, сообщает здоровье и останавливается по прерыванию; назовите курсоры в `KV`.
+10. Добавьте точку сборки, экспорт и вставку в `cordis.patch.yml` и перечислите модуль и его спец-файл в таблицах 007.
+11. Протестируйте это так, как `tests/sources.spec.ts` тестирует другие Источники.

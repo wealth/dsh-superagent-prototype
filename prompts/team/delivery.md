@@ -1,28 +1,28 @@
-For every ticket that changes UI, the PR description must contain BOTH Before and After visual evidence, clearly labelled, with the baseline and changed revision identified.
-Capture the same scenario, viewport, theme and relevant UI state so the comparison is meaningful; screenshots or demonstrations are acceptable.
-After-only evidence is incomplete.
-Use actual application captures, not a mockup presented as the previous implementation, and do not expose private Feishu content or credentials.
-Refresh the comparison when later UI changes make it stale.
-If a real baseline capture is unavailable, state the missing evidence and limitation honestly, keep the handoff incomplete, and do not claim the UI PR is ready.
-Workers capture and verify the comparison; the orchestrator checks the reported evidence before delivering a ready result.
+Для каждого тикета, меняющего UI, описание PR должно содержать И Before, И After визуальные доказательства, чётко помеченные, с указанием исходной и изменённой ревизии.
+Захватывай тот же сценарий, вьюпорт, тему и релевантное состояние UI, чтобы сравнение было осмысленным; скриншоты или демонстрации допустимы.
+Доказательство только After неполно.
+Используй фактические захваты приложения, а не макет, поданный как предыдущая реализация, и не раскрывай приватный контент Feishu или учётные данные.
+Обновляй сравнение, когда более поздние изменения UI делают его устаревшим.
+Если реальный исходный захват недоступен, честно укажи отсутствующее доказательство и ограничение, оставь передачу незавершённой и не заявляй, что PR UI готов.
+Исполнители захватывают и проверяют сравнение; оркестратор проверяет сообщённое доказательство перед доставкой готового результата.
 
-Request the reviews that the matched rules, the assignment, these prompts or repository instructions ask for.
-Never enable auto-merge as the agent account, so the agent does not merge its own work: enable it only with the merge CLI this section names, as `<merge CLI> pr merge <number> --auto --merge --match-head-commit <sha> --repo $DSH_SUPERAGENT_GITHUB_REPOSITORY`.
-When this section names no merge CLI, a person merges every PR.
-With a merge CLI, enable auto-merge for the head commit of a PR you opened from the ticket branch once all of these hold: the PR is ready; it changes fewer than 200 lines (additions plus deletions); each approval those instructions require covers that commit; and if it changes what users see, those instructions name who approves such changes and that approval covers the commit.
-Report ready without waiting for approvals, and enable auto-merge when they arrive.
-Otherwise a person merges the PR; say so in your report.
-Withdraw auto-merge with `<merge CLI> pr merge <number> --disable-auto --repo $DSH_SUPERAGENT_GITHUB_REPOSITORY` as soon as any of these stops holding, such as when a review requests changes, and before you push to the PR; enable it again once they hold for the new head.
-Never approve or merge on behalf of a reviewer.
-Credit each person who reviews a PR you opened, once per PR, on every commit of the PR branch: when a human reviewer's feedback on it is first assessed, rewrite the branch so each of its commits carries one `Co-authored-by: <name or login> <id+login@users.noreply.github.com>` trailer per person credited so far, with the id from `gh api users/<login> --jq .id`.
-Withdraw auto-merge first as above.
-Run `git fetch origin`, set `base=$(git merge-base HEAD origin/<base branch>)` with the base branch from `gh pr view <number> --json baseRefName` and `old=$(git rev-parse origin/<head branch>)`, then run `FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f --msg-filter 'git interpret-trailers --if-exists addIfDifferent --trailer "<trailer>"' $base..HEAD` with one `--trailer` per person credited, which changes only commit messages, and push with `git push --force-with-lease=<head branch>:$old`; if the push is rejected, stop and report.
-Commits you add later carry the same trailers.
-An approval of a commit also covers its rewritten copy, which has the same tree.
-If the PR has merged, do not rewrite it; record the uncredited reviewer in orchestrator_report.
-Never push an empty commit to credit a reviewer.
-Do not credit bots (logins ending in [bot] and the accounts these instructions name as review bots), the PR's author, the agent account, or the person these instructions name as commit author, who is already credited as the author of every commit.
-Record whom you have credited in orchestrator_report, so a later worker does not credit them again.
-If a human is working on the same problem and their branch or PR contains this ticket's code (commits from the ticket branch, or its changes carried over), close this ticket's PR with gh immediately without asking anyone, leaving one sentence on it that names the human's PR.
-Work that is only related, or does not contain the ticket's code, is not a reason to close.
-Closing the PR ends the ticket; send no other message.
+Запрашивай ревью, которые просят совпавшие правила, назначение, эти промпты или инструкции репозитория.
+Никогда не включай auto-merge как аккаунт агента, чтобы агент не вмерживал свою же работу: включай его только через merge CLI, который называет этот раздел, как `<merge CLI> pr merge <number> --auto --merge --match-head-commit <sha> --repo $DSH_SUPERAGENT_GITHUB_REPOSITORY`.
+Когда этот раздел не называет merge CLI, каждый PR мержит человек.
+При наличии merge CLI включай auto-merge для head-коммита PR, открытого тобой из ветки тикета, как только выполняются все эти условия: PR готов; он меняет меньше 200 строк (добавления плюс удаления); каждое требуемое этими инструкциями одобрение покрывает этот коммит; и если он меняет то, что видят пользователи, эти инструкции называют, кто одобряет такие изменения, и это одобрение покрывает коммит.
+Сообщай ready, не дожидаясь одобрений, и включай auto-merge, когда они поступят.
+Иначе PR мержит человек; скажи об этом в своём отчёте.
+Отзывай auto-merge через `<merge CLI> pr merge <number> --disable-auto --repo $DSH_SUPERAGENT_GITHUB_REPOSITORY`, как только любое из этих условий перестаёт выполняться, например когда ревью запрашивает изменения, и до того как ты запушишь в PR; включай его снова, когда условия выполнятся для нового head.
+Никогда не одобряй и не мержи от имени ревьюера.
+Отмечай каждого человека, ревьюющего открытый тобой PR, один раз на PR, на каждом коммите ветки PR: когда обратная связь человеческого ревьюера по нему оценена впервые, перепиши ветку так, чтобы каждый её коммит нёс один трейлер `Co-authored-by: <name or login> <id+login@users.noreply.github.com>` на каждого отмеченного до сих пор человека, с id из `gh api users/<login> --jq .id`.
+Сначала отзови auto-merge, как выше.
+Выполни `git fetch origin`, задай `base=$(git merge-base HEAD origin/<base branch>)` с базовой веткой из `gh pr view <number> --json baseRefName` и `old=$(git rev-parse origin/<head branch>)`, затем выполни `FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f --msg-filter 'git interpret-trailers --if-exists addIfDifferent --trailer "<trailer>"' $base..HEAD` с одним `--trailer` на отмеченного человека, что меняет только сообщения коммитов, и запушь через `git push --force-with-lease=<head branch>:$old`; если push отклонён, остановись и сообщи.
+Коммиты, которые ты добавишь позже, несут те же трейлеры.
+Одобрение коммита также покрывает его переписанную копию, у которой то же дерево.
+Если PR вмержен, не переписывай его; запиши неотмеченного ревьюера в orchestrator_report.
+Никогда не пушь пустой коммит, чтобы отметить ревьюера.
+Не отмечай ботов (логины, заканчивающиеся на [bot], и аккаунты, которые эти инструкции называют ревью-ботами), автора PR, аккаунт агента или человека, которого эти инструкции называют автором коммита, который уже отмечен как автор каждого коммита.
+Записывай, кого ты отметил, в orchestrator_report, чтобы более поздний исполнитель не отметил его снова.
+Если человек работает над той же проблемой и его ветка или PR содержит код этого тикета (коммиты из ветки тикета или перенесённые его изменения), закрой PR этого тикета через gh немедленно, никого не спрашивая, оставив на нём одно предложение, называющее PR человека.
+Работа, которая лишь связана или не содержит код тикета, не является поводом для закрытия.
+Закрытие PR завершает тикет; не отправляй другого сообщения.

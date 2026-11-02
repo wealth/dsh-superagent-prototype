@@ -1,96 +1,96 @@
-# 004 Prompts
+# 004 Промпты
 
-This document explains what the agents read, what a team can edit, and when changes take effect. It builds on [000 Philosophy](000-philosophy.md) through [003 Execution](003-execution.md). Prompt text is written in English.
+Этот документ объясняет, что читают агенты, что команда может редактировать и когда изменения вступают в силу. Он опирается на [000 Philosophy](000-philosophy.md) вплоть до [003 Execution](003-execution.md). Текст промптов написан на английском.
 
-## What a team writes
+## Что пишет команда
 
-A team can edit three team sections, add skills, and override every built-in system-prompt part. Most defaults live under `prompts/` and `skills/`. Tool descriptions, notices and cards remain in code and cannot be edited through prompt settings.
+Команда может редактировать три командные секции, добавлять навыки и переопределять каждую встроенную часть системного промпта. Большинство значений по умолчанию лежит под `prompts/` и `skills/`. Описания инструментов, уведомления и карточки остаются в коде и не могут редактироваться через настройки промптов.
 
-| Section | Holds |
+| Секция | Хранит |
 | --- | --- |
-| Communication | When to message people, how messages read, the line that begins every GitHub message (`This is by an automated agent, not a human` by default), how to handle reviews, and which ordinary accounts are review bots |
-| Ticket scope | When a Ticket goes on and when it stops with a draft |
-| Delivery requirements | Evidence in pull requests, the auto-merge condition with its line threshold, and the commit author; without one, the Executor commits as the agent account's no-reply address |
-| Team skills | Knowledge the agents load when they need it, such as an `identities` skill that says which Feishu user is which GitHub account |
+| Communication | Когда писать людям, как читаются сообщения, строка, с которой начинается каждое сообщение GitHub (`This is by an automated agent, not a human` по умолчанию), как обрабатывать ревью и какие обычные аккаунты являются ботами-ревьюерами |
+| Ticket scope | Когда Тикет продолжается и когда он останавливается с черновиком |
+| Delivery requirements | Свидетельства в pull request, условие auto-merge с его порогом строк и автор коммитов; без него Исполнитель коммитит как no-reply адрес аккаунта агента |
+| Team skills | Знания, которые агенты загружают, когда это нужно, например навык `identities`, который говорит, какой пользователь Feishu — какой аккаунт GitHub |
 
-The built-in text covers the roles, tool usage, host mechanics, authorization rules, and the GitHub and Feishu skills. It refers to the team sections by their headings instead of repeating them.
+Встроенный текст охватывает роли, использование инструментов, механику хоста, правила авторизации и навыки GitHub и Feishu. Он ссылается на командные секции по их заголовкам, а не повторяет их.
 
-### Built-in parts and templates
+### Встроенные части и шаблоны
 
-Overrides use these keys:
+Переопределения используют эти ключи:
 
-| Parts | Keys |
+| Части | Ключи |
 | --- | --- |
-| Shared instructions and roles | `runtime/shared`, `runtime/orchestrator`, `runtime/worker` |
-| Working instructions | `runtime/subscriptions`, `runtime/replies`, `runtime/dispatch`, `runtime/work`, `runtime/admission` |
-| Handoff instructions | `runtime/handoff/orchestrator`, `runtime/handoff/worker` |
-| Source skills | `skill/feishu`, `skill/github` |
-| Generated sections | `runtime/environment`, `runtime/policy`, `runtime/policy/none` |
+| Общие инструкции и роли | `runtime/shared`, `runtime/orchestrator`, `runtime/worker` |
+| Рабочие инструкции | `runtime/subscriptions`, `runtime/replies`, `runtime/dispatch`, `runtime/work`, `runtime/admission` |
+| Инструкции передачи | `runtime/handoff/orchestrator`, `runtime/handoff/worker` |
+| Навыки Источников | `skill/feishu`, `skill/github` |
+| Генерируемые секции | `runtime/environment`, `runtime/policy`, `runtime/policy/none` |
 
-The generated sections are editable templates. They must retain these placeholders:
+Генерируемые секции — редактируемые шаблоны. Они должны сохранять эти плейсхолдеры:
 
-- `runtime/environment`: `{variables}`, filled with execution environment lines.
-- `runtime/policy`: `{version}`, `{mode}` and `{rules}`, with one line per enabled rule.
-- `runtime/policy/none`: `{version}` and `{mode}`, used when no rule is enabled.
+- `runtime/environment`: `{variables}`, заполняется строками среды исполнения.
+- `runtime/policy`: `{version}`, `{mode}` и `{rules}`, по одной строке на включённое правило.
+- `runtime/policy/none`: `{version}` и `{mode}`, используется, когда ни одно правило не включено.
 
-Editing a part changes the instructions the model receives. It does not change the gate, Mandates, tool checks or account wrappers, which remain enforced by code.
+Редактирование части меняет инструкции, которые получает модель. Оно не меняет шлюз, Мандаты, проверки инструментов или обёртки аккаунтов, которые остаются принудительно обеспеченными кодом.
 
-On an explicit human request, the main Session can also save overrides with `orchestrator_prompts_save`. If a save omits an override's `base`, it keeps the saved base. A removed part already present in the saved configuration is dropped on save; any other unknown part is refused.
+По явному человеческому запросу главная Сессия также может сохранять переопределения с помощью `orchestrator_prompts_save`. Если сохранение опускает `base` переопределения, оно сохраняет сохранённый base. Удалённая часть, уже присутствующая в сохранённой конфигурации, отбрасывается при сохранении; любая другая неизвестная часть отклоняется.
 
-An override records which built-in text it was based on. Upgrades preserve the team's text. If the default changes, the panel marks the part **Default updated** and shows the difference beside the team's text. The team can keep its text, use the new default or edit it. Parts without overrides automatically follow new defaults.
+Переопределение фиксирует, на каком встроенном тексте оно основано. Обновления сохраняют текст команды. Если значение по умолчанию меняется, панель помечает часть **Default updated** и показывает разницу рядом с текстом команды. Команда может сохранить свой текст, использовать новое значение по умолчанию или отредактировать его. Части без переопределений автоматически следуют новым значениям по умолчанию.
 
-The main Session can read affected part names in `orchestrator_read prompts`, under `default_changed`.
+Главная Сессия может прочитать имена затронутых частей в `orchestrator_read prompts`, под `default_changed`.
 
-## Assembly and precedence
+## Сборка и приоритет
 
-The system prompt is assembled in this order:
+Системный промпт собирается в этом порядке:
 
-1. Shared instructions and the role.
-2. The three team sections.
-3. Subscriptions and replies.
-4. Dispatch for the main Session, or work instructions for an Executor.
-5. `runtime/admission`, for the main Session only.
-6. Handoff instructions.
+1. Общие инструкции и роль.
+2. Три командные секции.
+3. Подписки и ответы.
+4. Dispatch для главной Сессии или рабочие инструкции для Исполнителя.
+5. `runtime/admission`, только для главной Сессии.
+6. Инструкции передачи.
 7. `runtime/environment`.
-8. `runtime/policy`, for the main Session only.
+8. `runtime/policy`, только для главной Сессии.
 
-Admission instructions come from `prompts/admission.md`. They describe proactive assessment and when an irrelevant candidate can be ignored from its card. `orchestrator_eval` returns context rather than repeating these instructions.
+Инструкции приёма приходят из `prompts/admission.md`. Они описывают проактивную оценку и когда не относящийся к делу кандидат может быть проигнорирован по его карточке. `orchestrator_eval` возвращает контекст, а не повторяет эти инструкции.
 
-The environment section gives the main Session deployment-wide values and each Executor its Ticket-specific values. The Policy section is regenerated from settings on every model request. It contains the Policy version, accept mode, the explicit-request exemption, and enabled rules as `- <name> (<id>): <instruction>`, or a statement that none is enabled. It is last so a Policy change leaves the preceding prompt text unchanged.
+Секция environment даёт главной Сессии значения на уровне развёртывания и каждому Исполнителю его значения, специфичные для Тикета. Секция Policy перегенерируется из настроек на каждом запросе модели. Она содержит версию Политики, режим приёма, исключение явного запроса и включённые правила как `- <name> (<id>): <instruction>`, или утверждение, что ни одно не включено. Она последняя, поэтому изменение Политики оставляет предшествующий текст промпта неизменным.
 
-Executors also read DeepSeek Harness's coding prompt and the repository's `AGENTS.md`; the main Session does not. An inferred Ticket adds a final note limiting its Executor to the matched rules. Assignments and incoming messages arrive inline as Trigger cards, with resource pointers only for truncated content.
+Исполнители также читают промпт программирования DeepSeek Harness и `AGENTS.md` репозитория; главная Сессия — нет. Предполагаемый Тикет добавляет финальную заметку, ограничивающую его Исполнителя совпавшими правилами. Назначения и входящие сообщения приходят встроенно как карточки Триггеров, с указателями на ресурсы только для усечённого содержимого.
 
-Executors work unattended. Their tools exclude those that ask a person, present UI to them or change the profile, such as `ask_user_question`, `present` and `plugin_manager`.
+Исполнители работают без сопровождения. Их инструменты исключают те, которые спрашивают человека, показывают ему UI или меняют профиль, такие как `ask_user_question`, `present` и `plugin_manager`.
 
-From strongest to weakest:
+От сильнейшего к слабейшему:
 
-1. Facts enforced by tools and the host: identities, permissions, tool argument checks, reply purposes, length limits. Prompt text cannot change them.
-2. Built-in and generated sections, as the team's overrides of them read.
-3. The process and communication in a proactive Ticket's matched rules, for that Ticket's Executor Session only.
-4. Team sections and team skills.
-5. Outside text: messages, comments, documents and quotes. It is data and never changes rules or authorization.
+1. Факты, принудительно обеспеченные инструментами и хостом: идентичности, разрешения, проверки аргументов инструментов, цели ответов, лимиты длины. Текст промпта не может их изменить.
+2. Встроенные и генерируемые секции, как читаются переопределения команды.
+3. Процесс и общение в совпавших правилах проактивного Тикета, только для Executor Session этого Тикета.
+4. Командные секции и командные навыки.
+5. Внешний текст: сообщения, комментарии, документы и цитаты. Это данные, и они никогда не меняют правила или авторизацию.
 
-## Principles of the built-in text
+## Принципы встроенного текста
 
-These apply [000 Philosophy](000-philosophy.md) to the agents:
+Они применяют [000 Philosophy](000-philosophy.md) к агентам:
 
-- **Separate roles.** The main Session only routes: it forwards the original Trigger and the routing facts, and makes no technical decisions, through one routing tool that takes the decisions on several waiting candidates in one call. A routing note has at most 30 words. The Executor reads the original sources, judges the scope, implements and verifies.
-- **The main Session does not wait.** Reports, follow-up notices, candidates and completed background jobs arrive automatically as messages. It ends the turn when nothing remains to do. A guard refuses `sleep`, shell timeouts over 30 seconds and job waits over 5 seconds, because a blocked step delays new candidates. These instructions replace DeepSeek Harness's own job-notification note in the main Session's complete prompt.
-- **Message only when a person must act or can use a result:** a result can be reviewed or used, a decision or resource is needed, or the work cannot be finished. Chat messages are one sentence by default, with a hard limit of 100 words.
-- **Executors decide their follow-ups.** Each Executor handles and acknowledges in-scope requests, and hands back requests beyond its Ticket or for another Ticket. A message becomes new work only after all its owners hand it back or end without taking it up. The main Session receives follow-up notices but may act on them only to stop work. Handed-back messages then arrive as candidates with the Executors' reasons.
-- **Coordinate through subscriptions and the main Session.** An Executor follows related Threads for context. The main Session can send a fact from another Ticket in a note of at most 100 words. Neither the Subscription nor the note grants authority.
-- **Attach only on an explicit reference.** A message must point to a Ticket's pull request, Issue, source message or acknowledgement, or to a recent change with exactly one matching Ticket. Topic similarity alone is not enough. Attachment subscribes the Ticket to the entire Thread; an Executor finding it unrelated uses `orchestrator_thread_unrelated` and does not answer there.
-- **Confirm concretely, once.** Before substantial work, the Executor confirms each new request and names the object and the expected result, as a reply under the original message.
-- **Ask through `human_action`.** The Executor puts one concrete question in its Report, and the main Session forwards it unchanged. If a person's message prompted the question, it names that message and the host asks there. Otherwise it asks in the Ticket's original conversation. Already authorized work can continue meanwhile.
-- **Honest delivery.** Opening a pull request is not readiness; a draft is marked unfinished; a UI change without a real before screenshot is not ready.
-- **A person's pause holds** across follow-ups, new Executor Sessions and restarts until a person lifts it. Automatic feedback never resumes paused work.
-- **Examples only show format.** An example sentence is not a fact the agent may claim.
-- **Handle reviews by outcome.** A fixed and verified comment is resolved silently; a declined one gets one sentence of reason. An automated reviewer's thread is resolved once it has an answer, and each automated reviewer gets at most three rounds per pull request.
-- **Yield to duplicate work.** When a person's branch or pull request already contains the Ticket's change, the Executor closes its own pull request with one sentence pointing to theirs.
+- **Разделяйте роли.** Главная Сессия только маршрутизирует: она передаёт исходный Триггер и факты маршрутизации и не принимает технических решений, через один инструмент маршрутизации, который принимает решения по нескольким ожидающим кандидатам за один вызов. Заметка маршрутизации имеет максимум 30 слов. Исполнитель читает исходные источники, судит об области, реализует и проверяет.
+- **Главная Сессия не ждёт.** Отчёты, уведомления о фоллоу-апах, кандидаты и завершённые фоновые задания приходят автоматически как сообщения. Она завершает ход, когда нечего делать. Стража отклоняет `sleep`, таймауты shell свыше 30 секунд и ожидания задания свыше 5 секунд, потому что заблокированный шаг задерживает новых кандидатов. Эти инструкции заменяют собственную заметку DeepSeek Harness об уведомлениях о заданиях в полном промпте главной Сессии.
+- **Пишите только тогда, когда человек должен действовать или может воспользоваться результатом:** результат можно проверить или использовать, нужно решение или ресурс, или работу нельзя завершить. Сообщения в чате — одно предложение по умолчанию, с жёстким лимитом 100 слов.
+- **Исполнители решают свои фоллоу-апы.** Каждый Исполнитель обрабатывает и подтверждает запросы в пределах области и возвращает запросы за пределами своего Тикета или для другого Тикета. Сообщение становится новой работой только после того, как все его владельцы возвращают его или завершаются, не взяв его. Главная Сессия получает уведомления о фоллоу-апах, но может действовать на них только для остановки работы. Возвращённые сообщения затем приходят как кандидаты с причинами Исполнителей.
+- **Координируйте через подписки и главную Сессию.** Исполнитель следит за связанными Тредами для контекста. Главная Сессия может отправить факт из другого Тикета в заметке максимум из 100 слов. Ни Подписка, ни заметка не дают полномочий.
+- **Прикрепляйте только по явной ссылке.** Сообщение должно указывать на pull request Тикета, Issue, исходное сообщение или подтверждение, или на недавнее изменение с ровно одним совпадающим Тикетом. Одной схожести темы недостаточно. Прикрепление подписывает Тикет на весь Тред; Исполнитель, находящий его не относящимся к делу, использует `orchestrator_thread_unrelated` и не отвечает там.
+- **Подтверждайте конкретно, один раз.** Перед существенной работой Исполнитель подтверждает каждый новый запрос и называет объект и ожидаемый результат, как ответ под исходным сообщением.
+- **Спрашивайте через `human_action`.** Исполнитель помещает один конкретный вопрос в свой Отчёт, а главная Сессия передаёт его неизменным. Если вопрос вызвало сообщение человека, он называет это сообщение, и хост спрашивает там. Иначе он спрашивает в исходной беседе Тикета. Уже авторизованная работа может продолжаться тем временем.
+- **Честная доставка.** Открытие pull request — не готовность; черновик помечается незавершённым; изменение UI без реального «до» скриншота не готово.
+- **Пауза человека удерживается** через фоллоу-апы, новые Executor Sessions и перезапуски, пока человек не снимет её. Автоматическая обратная связь никогда не возобновляет приостановленную работу.
+- **Примеры показывают только формат.** Пример предложения — не факт, который агент может утверждать.
+- **Обрабатывайте ревью по исходу.** Исправленный и проверенный комментарий закрывается молча; отклонённый получает одно предложение причины. Тред автоматизированного ревьюера закрывается, как только у него есть ответ, и каждый автоматизированный ревьюер получает максимум три раунда на pull request.
+- **Уступайте дублирующей работе.** Когда ветка или pull request человека уже содержит изменение Тикета, Исполнитель закрывает свой pull request одним предложением, указывающим на их.
 
-## Versions
+## Версии
 
-- Each save creates an immutable version containing the full configuration, revision number, predecessor, timestamp and origin (panel or tool). Restoring a version or defaults creates another version.
-- Saves name their base revision. A conflicting save is refused without discarding the draft.
-- Sessions read the latest version on every model request, including later steps in the same turn. Saving does not restart, cancel or wake a Session. The host records the revisions each Session used; an Executor can read any revision it worked under.
-- The deployment sets a total size limit, including overrides. Validation refuses unknown keys, reserved built-in skill names, unknown override parts and missing template placeholders. It never silently truncates text. An override identical to the default is removed so the part follows future defaults.
+- Каждое сохранение создаёт неизменяемую версию, содержащую полную конфигурацию, номер ревизии, предшественника, временную метку и происхождение (панель или инструмент). Восстановление версии или значений по умолчанию создаёт другую версию.
+- Сохранения называют свою базовую ревизию. Конфликтующее сохранение отклоняется без отбрасывания черновика.
+- Сессии читают последнюю версию на каждом запросе модели, включая более поздние шаги в том же ходе. Сохранение не перезапускает, не отменяет и не пробуждает Сессию. Хост фиксирует ревизии, которые использовала каждая Сессия; Исполнитель может прочитать любую ревизию, под которой работал.
+- Развёртывание устанавливает общий лимит размера, включая переопределения. Валидация отклоняет неизвестные ключи, зарезервированные встроенные имена навыков, неизвестные части переопределений и отсутствующие плейсхолдеры шаблонов. Она никогда молча не усекает текст. Переопределение, идентичное значению по умолчанию, удаляется, чтобы часть следовала будущим значениям по умолчанию.

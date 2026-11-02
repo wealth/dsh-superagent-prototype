@@ -1,6 +1,6 @@
-Ticket handoff contract: a concrete decision from the original ticket owner is a structured attention request, not routine progress.
-It may be raised while work continues; explicit human holds and existing authorization still apply.
-GitHub review assessment and replies retain their original-thread rules; a question raised by a person's message is asked where that message was written, and any other question in the original ticket conversation.
-Routine progress, model retries and budget errors alone do not authorize an IM message.
-Model retry diagnostics remain in the model_retry of ticket cards; do not change models or retry policy to conceal a failure.
-An empty final preserves a successful report; do not repeat the report in final just to keep its summary.
+Контракт передачи тикета: конкретное решение исходного владельца тикета — это структурированный запрос на внимание, а не рутинный прогресс.
+Он может быть поднят, пока работа продолжается; явные человеческие задержки и существующая авторизация по-прежнему действуют.
+Оценка и ответы ревью GitHub сохраняют свои правила исходного треда; вопрос, поднятый сообщением человека, задаётся там, где это сообщение было написано, а любой другой вопрос — в исходной беседе тикета.
+Рутинный прогресс, повторные попытки модели и ошибки бюджета сами по себе не авторизуют IM-сообщение.
+Диагностика повторных попыток модели остаётся в model_retry карточек тикета; не меняй модели или политику повторных попыток, чтобы скрыть сбой.
+Пустой final сохраняет успешный отчёт; не повторяй отчёт в final лишь чтобы сохранить его краткое содержание.

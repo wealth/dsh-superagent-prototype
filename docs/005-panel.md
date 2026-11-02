@@ -1,58 +1,58 @@
-# 005 Panel
+# 005 Панель
 
-Open **Superagent** in the DeepSeek Harness Web sidebar to supervise the agent. The panel prioritizes work that needs a person, then system health and history. This document builds on [000 Philosophy](000-philosophy.md) through [004 Prompts](004-prompts.md).
+Откройте **Superagent** в боковой панели DeepSeek Harness Web, чтобы контролировать агента. Панель ставит на первое место работу, требующую участия человека, затем — состояние системы и историю. Этот документ развивает темы с [000 Philosophy](000-philosophy.md) по [004 Prompts](004-prompts.md).
 
-## Three questions
+## Три вопроса
 
-Opening the panel answers three questions, in this order:
+Открытие панели отвечает на три вопроса, в таком порядке:
 
-1. Does anything need me now?
-2. Is the system healthy and doing the right things?
-3. What is the history of one piece of work, from Trigger through Eval to Ticket?
+1. Нужно ли мне что-то сделать прямо сейчас?
+2. Здорова ли система и делает ли она правильные вещи?
+3. Какова история одной единицы работы — от Триггера через Оценку до Тикета?
 
-## Tabs
+## Вкладки
 
-The tabs follow the workflow: **Overview**, **Source**, **Trigger**, **Eval**, **Execution**, and **Settings**. Until repository and account setup succeeds, Overview shows what is missing and links to the relevant setting.
+Вкладки следуют за рабочим процессом: **Overview**, **Source**, **Trigger**, **Eval**, **Execution** и **Settings**. Пока настройка репозитория и аккаунтов не завершена успешно, Overview показывает, чего не хватает, и ссылается на соответствующую настройку.
 
-| Tab | Shows |
+| Вкладка | Показывает |
 | --- | --- |
-| Overview | Tickets needing action, system problems, activity counts for the last 24 hours, and Executor load. Each block links to its detailed page |
-| Source | Source state, setup problems and non-zero counts. Filtered Triggers and dropped messages cover the same 24-hour window as Overview |
-| Trigger | Threads filtered by Subscribed, Evaluating, New Triggers in 24 h, or All Threads. Each Thread shows its Triggers newest first, Decisions and Subscriptions |
-| Eval | Decisions with their reason and matched rules |
-| Execution | Executor state, Pause processing, and Tickets filtered by Open, Pending, Working, Waiting for a Trigger or Ended. Ticket details show actions, authorization, waiting Inputs, Subscriptions and Assignments |
-| Settings | Sources, Eval, Execution, Prompts and Deployment. Each group includes its save history |
+| Overview | Тикеты, требующие действий, проблемы системы, счётчики активности за последние 24 часа и нагрузку на Исполнителей. Каждый блок ссылается на свою подробную страницу |
+| Source | Состояние Источников, проблемы настройки и ненулевые счётчики. Отфильтрованные Триггеры и отброшенные сообщения охватывают то же 24-часовое окно, что и Overview |
+| Trigger | Треды, отфильтрованные по Подписанные, Оцениваются, Новые Триггеры за 24 ч или Все Треды. Каждый Тред показывает свои Триггеры, начиная с новейших, Решения и Подписки |
+| Eval | Решения с их причиной и совпавшими правилами |
+| Execution | Состояние Исполнителей, Пауза обработки и Тикеты, отфильтрованные по Открыт, Ожидает, В работе, Ожидает Триггер или Завершён. Детали Тикета показывают действия, авторизацию, ожидающие Входы, Подписки и Назначения |
+| Settings | Источники, Оценка, Исполнение, Промпты и Развёртывание. Каждая группа включает свою историю сохранений |
 
-### Reading individual records
+### Чтение отдельных записей
 
-A dropped message links to its Ticket, or to its Thread when it has no Ticket. The Source page explains whether its conversation disappeared or the Source stopped listening to it.
+Отброшенное сообщение ссылается на свой Тикет или на свой Тред, если у него нет Тикета. Страница Источника объясняет, исчезла ли его беседа или Источник перестал её слушать.
 
-A human follow-up still owned by an Executor is marked **Delivered to Ticket**, without an Eval. The Thread also shows hand-back reasons and context-only Subscriptions. **Evaluate again** can send that follow-up to Eval, or retry a Trigger with no effective judgement: one filtered by its Source, an unavailable Eval, or a delivered message with neither a non-stop Decision nor an Executor acknowledgement.
+Человеческий фоллоу-ап, всё ещё принадлежащий Исполнителю, помечен как **Delivered to Ticket**, без Оценки. Тред также показывает причины возврата и подписки только для контекста. **Evaluate again** может отправить этот фоллоу-ап на Оценку или повторно обработать Триггер без эффективного решения: отфильтрованный своим Источником, с недоступной Оценкой или доставленное сообщение, у которого нет ни безостановочного Решения, ни подтверждения Исполнителем.
 
-Ticket details show the originating Trigger, Decision and reason, scope and Policy version. Assignments and secondary details are folded below the immediate actions. **Retry** is available for failed Input delivery or a Ticket waiting for a person after a blocked or failed Report. Ended Tickets show outcomes such as **Pull request merged** or **Stopped by a person**.
+Детали Тикета показывают исходный Триггер, Решение и причину, область действия и версию Политики. Назначения и второстепенные детали свёрнуты под непосредственными действиями. **Retry** доступно для неудачной доставки Входа или для Тикета, ожидающего человека после заблокированного или неудавшегося Отчёта. Завершённые Тикеты показывают исходы, например **Pull request merged** или **Stopped by a person**.
 
-## Settings groups
+## Группы настроек
 
-- **Sources:** one card per Source with its switch, fields and verified account facts. GitHub also offers receive-all switches for new Issues, pull requests, comments and default-branch CI. Polling and read limits are under Advanced.
-- **Eval:** the Policy version and rules, followed by **On each Source** and the Eval settings. Each Source tab contains its allowed list, membership sync, admission table and bot list. Sync runs at startup and on **Sync now**. The admission table distinguishes receiving scope, sender membership and whether the message addresses the agent. Eval settings select the accept mode, timeout and assessment model.
-- **Execution:** worker model, concurrency, directory root, prepare command and blocked commands. Clicking an available variable inserts it into the prepare command.
-- **Prompts:** **Edit** changes team sections, built-in parts and skills. **Full prompt** shows the assembled text and compares it with saved text or defaults. **History** lists versions. Edited built-in parts are marked changed and can be reset; templates list their required placeholders.
+- **Sources:** одна карточка на Источник с его переключателем, полями и проверенными фактами аккаунта. GitHub дополнительно предлагает переключатели приёма всего: для новых Issues, pull request'ов, комментариев и CI основной ветки. Лимиты опроса и чтения находятся в разделе Advanced.
+- **Eval:** версия Политики и правила, за ними — **On each Source** и настройки Оценки. Каждая вкладка Источника содержит свой список разрешённых, синхронизацию состава, таблицу приёма и список ботов. Синхронизация запускается при старте и по **Sync now**. Таблица приёма различает область приёма, принадлежность отправителя и то, обращается ли сообщение к агенту. Настройки Оценки выбирают режим приёма, тайм-аут и модель оценки.
+- **Execution:** модель воркера, параллелизм, корневой каталог, команда подготовки и заблокированные команды. Нажатие на доступную переменную вставляет её в команду подготовки.
+- **Prompts:** **Edit** изменяет разделы команды, встроенные части и навыки. **Full prompt** показывает собранный текст и сравнивает его с сохранённым текстом или значениями по умолчанию. **History** перечисляет версии. Изменённые встроенные части помечаются как изменённые и могут быть сброшены; шаблоны перечисляют свои обязательные плейсхолдеры.
 
-  An upgrade that changes an overridden default marks it **Default updated** (默认内容已更新). The panel compares the old and new defaults above the team's text. If the old default was not recorded, it compares the team's text with the new default instead. Choose **Keep my text** or **Use the new default**. Overrides for removed parts are listed below the tab bar and dropped on the next save.
-- **Deployment:** startup problems with **Check again**, the state directory and machine limits. Saved limits apply without restart. The DeepSeek Harness Plugin Manager exposes the same page.
+  Обновление, изменяющее переопределённое значение по умолчанию, помечает его как **Default updated** (默认内容已更新). Панель сравнивает старое и новое значения по умолчанию над текстом команды. Если старое значение по умолчанию не было записано, вместо этого она сравнивает текст команды с новым значением по умолчанию. Выберите **Keep my text** или **Use the new default**. Переопределения удалённых частей перечислены под панелью вкладок и удаляются при следующем сохранении.
+- **Deployment:** проблемы запуска с **Check again**, каталог состояния и лимиты машины. Сохранённые лимиты применяются без перезапуска. DeepSeek Harness Plugin Manager показывает ту же страницу.
 
-## Search
+## Поиск
 
-The header search finds Triggers by text, id, Feishu message id or a stored link, such as a GitHub comment URL. A Feishu link missing from the original message becomes searchable only after the host reads it during the current process lifetime.
+Поиск в шапке находит Триггеры по тексту, id, id сообщения Feishu или сохранённой ссылке, например URL комментария GitHub. Ссылка Feishu, отсутствующая в исходном сообщении, становится доступной для поиска только после того, как её прочитал хост в течение текущего времени жизни процесса.
 
-Search also finds Threads by references such as `#12` or a GitHub URL, and Tickets by title or a matching Thread.
+Поиск также находит Треды по ссылкам вида `#12` или URL GitHub, и Тикеты по названию или соответствующему Треду.
 
-## Principles
+## Принципы
 
-1. **Focus on what matters.** Every element answers one of the three questions, or it is removed. A number appears only when it changes what the supervisor does.
-2. **Precise definitions.** Categories have checkable definitions, are mutually exclusive and cover every case, as the Ticket stages do. A label says whom a row waits for and what it needs, not an internal status code.
-3. **One place per concept.** Source state belongs in Source; Threads and Triggers in Trigger; Decisions in Eval; Tickets in Execution. Settings are grouped by the concept they configure. Overview summarizes these pages and links to them instead of becoming another detailed view.
-4. **Domain structure.** The panel uses the domain terms. Internal identifiers appear only in folded details, and names replace identifiers where they can be resolved.
-5. **Honest state.** A count equals the length of the list it links to, and no state contradicts another fact.
-6. **Quiet by default.** Healthy states take no extra space. Problems must be actionable; a one-off network error is not enough. Rows needing a person offer their action directly. Keep page explanations to one sentence and put further detail in the (?) tooltip. Destructive actions require confirmation.
-7. **Consistent controls.** Use DeepSeek Harness design tokens and control behavior. The same information should look the same throughout the panel. Each settings block has one save bar, visible only while changes exist, a save runs or a save fails.
+1. **Сосредоточенность на главном.** Каждый элемент отвечает на один из трёх вопросов, иначе он удаляется. Число появляется только тогда, когда оно меняет то, что делает наблюдатель.
+2. **Точные определения.** Категории имеют проверяемые определения, являются взаимоисключающими и покрывают каждый случай, как это делают стадии Тикета. Метка говорит, кого ждёт строка и что ей нужно, а не внутренний код состояния.
+3. **Одно место на понятие.** Состояние Источника относится к разделу Source; Треды и Триггеры — к Trigger; Решения — к Eval; Тикеты — к Execution. Настройки сгруппированы по понятию, которое они конфигурируют. Overview обобщает эти страницы и ссылается на них, а не становится ещё одним детальным представлением.
+4. **Структура предметной области.** Панель использует термины предметной области. Внутренние идентификаторы появляются только в свёрнутых деталях, а имена заменяют идентификаторы там, где их можно разрешить.
+5. **Честное состояние.** Счётчик равен длине списка, на который он ссылается, и ни одно состояние не противоречит другому факту.
+6. **Тишина по умолчанию.** Здоровые состояния не занимают лишнего места. Проблемы должны быть действенными; разовая сетевая ошибка — недостаточное основание. Строки, требующие участия человека, предлагают своё действие прямо. Держите пояснения на странице в одном предложении, а дальнейшие детали выносите в подсказку (?). Разрушающие действия требуют подтверждения.
+7. **Единообразные элементы управления.** Используйте дизайн-токены DeepSeek Harness и поведение элементов управления. Одна и та же информация должна выглядеть одинаково по всей панели. Каждый блок настроек имеет одну панель сохранения, видимую только пока есть изменения, идёт сохранение или сохранение не удалось.

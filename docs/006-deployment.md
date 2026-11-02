@@ -1,37 +1,37 @@
-# 006 Deployment
+# 006 Развёртывание
 
-Use this guide to install, configure and operate dsh-superagent. It covers accounts, startup checks, upgrades and troubleshooting, building on [001 Domain model](001-domain.md) through [005 Panel](005-panel.md).
+Используйте это руководство для установки, настройки и эксплуатации dsh-superagent. Оно охватывает аккаунты, проверки при запуске, обновления и устранение неполадок, развивая темы с [001 Domain model](001-domain.md) по [005 Panel](005-panel.md).
 
-## What runs
+## Что запускается
 
-- **A dedicated DeepSeek Harness profile**, called `superagent` in this guide. Create it from the Web profile template. It loads the bundle and serves its panel on `127.0.0.1`. Keep it separate from the profile you work in: the plugin changes process-wide `PATH` and git settings, and its process needs independent restarts and upgrades.
-- **An agent GitHub account.** The agent comments, pushes branches and opens pull requests as this account, through a GitHub CLI signed in only as that account.
-- **Optional:** a Feishu bot for chat requests.
+- **Выделенный профиль DeepSeek Harness**, в этом руководстве называемый `superagent`. Создайте его из веб-шаблона профиля. Он загружает бандл и обслуживает свою панель на `127.0.0.1`. Держите его отдельно от профиля, в котором вы работаете: плагин меняет процессный `PATH` и настройки git, а его процессу нужны независимые перезапуски и обновления.
+- **Аккаунт GitHub для агента.** Агент оставляет комментарии, выкладывает ветки и открывает pull request'ы от имени этого аккаунта через GitHub CLI, выполнившего вход только в этот аккаунт.
+- **Опционально:** бот Feishu для запросов из чата.
 
-Plugin configuration holds the state directory and machine limits. Use the panel for everything else: Sources for the repository and accounts, Policy for allowed lists, and Execution for worker directories and commands.
+Конфигурация плагина хранит каталог состояния и лимиты машины. Для всего остального используйте панель: Sources для репозитория и аккаунтов, Policy для списков разрешённых, а Execution для каталогов и команд воркеров.
 
-### Permissions and isolation
+### Права и изоляция
 
-The bundle defines `dsh-superagent-worker` for Executors and `dsh-superagent-router` for the main Session. They appear in the DeepSeek Harness preset list but are intended only for dsh-superagent. Do not select them for personal Sessions or disable their configuration rows. The application needs them to create and resume its Sessions.
+Бандл определяет `dsh-superagent-worker` для Исполнителей и `dsh-superagent-router` для основной Сессии. Они появляются в списке пресетов DeepSeek Harness, но предназначены только для dsh-superagent. Не выбирайте их для личных Сессий и не отключайте их строки конфигурации. Приложению они нужны для создания и возобновления своих Сессий.
 
-Opening a blank managed Session in the Web UI can select the profile's default preset. dsh-superagent restores its role-specific preset before the first turn.
+Открытие пустой управляемой Сессии в веб-интерфейсе может выбрать пресет профиля по умолчанию. dsh-superagent восстанавливает свой ролевой пресет перед первым ходом.
 
-Both presets run with `danger-full-access` as the operator's OS user and read messages from subscribed Threads. Account wrappers choose the agent's credentials by default; they do not isolate the process. A worker can execute programs by path and read the operator's home directory. For isolation, use a dedicated OS account containing only the agent's credentials.
+Оба пресета работают с `danger-full-access` как ОС-пользователь оператора и читают сообщения из подписанных Тредов. Обёртки аккаунтов по умолчанию выбирают учётные данные агента; они не изолируют процесс. Воркер может выполнять программы по пути и читать домашний каталог оператора. Для изоляции используйте выделенный аккаунт ОС, содержащий только учётные данные агента.
 
-## Prerequisites
+## Предварительные требования
 
-- Node.js 22.19+ or 24+, pnpm, git 2.32+, Python 3.8+ and tmux
-- GitHub CLI (`gh`) 2.48 or later. Source CLI fields must point to `gh` or `lark-cli` wrappers; the host relies on their subcommands and output formats.
-- A repository on github.com; GitHub Enterprise Server is not supported. To create a checkout per Ticket, keep a local clone from which the prepare command can add worktrees. Install `git-lfs` if that repository uses Git LFS.
-- A model provider configured for DeepSeek Harness. dsh-superagent uses the profile's default model unless the Eval or Execution settings name another.
-- For Feishu: `lark-cli` (tested with 1.0.90) and a Feishu or Lark app with a bot
+- Node.js 22.19+ или 24+, pnpm, git 2.32+, Python 3.8+ и tmux
+- GitHub CLI (`gh`) 2.48 или новее. Поля CLI Источника должны указывать на обёртки `gh` или `lark-cli`; хост полагается на их подкоманды и форматы вывода.
+- Репозиторий на github.com; GitHub Enterprise Server не поддерживается. Чтобы создавать рабочую копию на каждый Тикет, держите локальный клон, из которого команда подготовки может добавлять worktree. Установите `git-lfs`, если этот репозиторий использует Git LFS.
+- Провайдер модели, настроенный для DeepSeek Harness. dsh-superagent использует модель профиля по умолчанию, если настройки Оценки или Исполнения не указывают другую.
+- Для Feishu: `lark-cli` (проверено с 1.0.90) и приложение Feishu или Lark с ботом
 
-## Accounts
+## Аккаунты
 
-### Agent GitHub account
+### Аккаунт GitHub агента
 
-1. Create a GitHub user account for the agent and give it write access to the repository. A GitHub App cannot be the agent, because dsh-superagent reads the account's notifications.
-2. Give it a GitHub CLI that uses only its own credentials:
+1. Создайте аккаунт пользователя GitHub для агента и дайте ему права на запись в репозиторий. GitHub App не может быть агентом, потому что dsh-superagent читает уведомления аккаунта.
+2. Дайте ему GitHub CLI, использующий только его собственные учётные данные:
 
    ```sh
    mkdir -p ~/.local/bin
@@ -44,12 +44,12 @@ Both presets run with `danger-full-access` as the operator's OS user and read me
    gh-agent api user --jq .login
    ```
 
-   Sign in as the agent account; the last command prints its login. dsh-superagent reads the login the same way.
+   Выполните вход как аккаунт агента; последняя команда печатает его логин. dsh-superagent читает логин тем же способом.
 
-### Feishu bot (optional)
+### Бот Feishu (опционально)
 
-1. Create a self-built app with the bot capability. Grant it the permissions to receive message events, read and send chat messages, and read chat members, then publish the app version.
-2. Give the bot its own `lark-cli` configuration, restricted to the bot identity, and a wrapper:
+1. Создайте собственное приложение с возможностью бота. Выдайте ему права на получение событий сообщений, чтение и отправку сообщений чата и чтение участников чата, затем опубликуйте версию приложения.
+2. Дайте боту собственную конфигурацию `lark-cli`, ограниченную идентичностью бота, и обёртку:
 
    ```sh
    LARKSUITE_CLI_CONFIG_DIR="$HOME/.lark-cli-dsh-superagent" lark-cli config init --app-id <cli_…> --app-secret-stdin
@@ -62,15 +62,15 @@ Both presets run with `danger-full-access` as the operator's OS user and read me
    chmod +x ~/.local/bin/lark-bot
    ```
 
-   The first command reads the app secret from standard input. Use a separate configuration directory: `lark-cli` allows one profile per app id, and your personal configuration may already contain a user login for that app.
+   Первая команда читает секрет приложения из стандартного ввода. Используйте отдельный каталог конфигурации: `lark-cli` допускает один профиль на id приложения, а ваша личная конфигурация может уже содержать логин пользователя для этого приложения.
 
-   The host refuses a CLI that can act as a user. It reads the app id, Feishu/Lark brand and bot `open_id` from the bot configuration.
+   Хост отказывает CLI, который может действовать как пользователь. Он читает id приложения, бренд Feishu/Lark и `open_id` бота из конфигурации бота.
 
-   Both configurations share the keychain entry for the app secret. To remove only the bot configuration, delete its directory; do not run `lark-cli config remove`, which would affect the shared secret.
+   Обе конфигурации разделяют запись keychain для секрета приложения. Чтобы удалить только конфигурацию бота, удалите её каталог; не выполняйте `lark-cli config remove`, который затронул бы общий секрет.
 
-## Install
+## Установка
 
-Run this block once, on a machine that has no `superagent` profile yet:
+Выполните этот блок один раз, на машине, у которой ещё нет профиля `superagent`:
 
 ```sh
 npm install -g @deepseek-ai/dsh@0.2.1-rc.3
@@ -80,131 +80,131 @@ dsh superagent --from-default-profile web --dump-config > /dev/null
 dsh plugin --profile superagent add "link:$PWD"
 ```
 
-The pinned version above is public; other versions must satisfy `engines.dsh` in `package.json`.
+Закреплённая выше версия является публичной; другие версии должны удовлетворять `engines.dsh` в `package.json`.
 
-The fourth command creates `~/.dsh/profiles/superagent` from the DeepSeek Harness Web template. The fifth installs this bundle. Set `DSH_HOME` to relocate the default `~/.dsh` directory.
+Четвёртая команда создаёт `~/.dsh/profiles/superagent` из веб-шаблона DeepSeek Harness. Пятая устанавливает этот бандл. Задайте `DSH_HOME`, чтобы переместить каталог `~/.dsh` по умолчанию.
 
-Run the profile-creation command only for a new installation. If the profile already exists, that command replaces it and deletes its `cordis.patch.yml`, including machine configuration. Do not use it for upgrades.
+Выполняйте команду создания профиля только для новой установки. Если профиль уже существует, эта команда заменяет его и удаляет его `cordis.patch.yml`, включая конфигурацию машины. Не используйте её для обновлений.
 
-## Machine configuration
+## Конфигурация машины
 
-Copy [examples/profile.cordis.patch.yml](../examples/profile.cordis.patch.yml) to `~/.dsh/profiles/superagent/cordis.patch.yml`, replacing that file, and replace every `<placeholder>`. For Feishu, also enable the `dsh-superagent-feishu` entry there. The `webserver` entry sets the panel's port.
+Скопируйте [examples/profile.cordis.patch.yml](../examples/profile.cordis.patch.yml) в `~/.dsh/profiles/superagent/cordis.patch.yml`, заменив этот файл, и замените каждый `<placeholder>`. Для Feishu также включите там запись `dsh-superagent-feishu`. Запись `webserver` задаёт порт панели.
 
-| Key | Required | Meaning |
+| Ключ | Обязателен | Значение |
 | --- | --- | --- |
-| `stateDir` | yes | Absolute path: the database, the lock, the command shims in `worker-bin`, the agent's git configuration and, by default, the Ticket directories in `work`. Back it up before upgrades |
-| `promptMaxChars`, `admissionContextMaxPages`, `admissionContextTimeoutMs` | no | The largest saved prompt configuration, and how many Thread pages one assessment reads within what time |
+| `stateDir` | да | Абсолютный путь: база данных, блокировка, командные шимы в `worker-bin`, git-конфигурация агента и, по умолчанию, каталоги Тикетов в `work`. Создавайте резервную копию перед обновлениями |
+| `promptMaxChars`, `admissionContextMaxPages`, `admissionContextTimeoutMs` | нет | Максимальный размер сохранённой конфигурации промптов, и сколько страниц Треда читает одна оценка в течение какого времени |
 
-After the first start, edit machine limits in **Settings → Deployment** or the DeepSeek Harness Plugin Manager. Changes apply without restart. `stateDir` cannot be changed there. Invalid values or unknown configuration keys prevent startup; the log identifies the key.
+После первого запуска изменяйте лимиты машины в **Settings → Deployment** или в DeepSeek Harness Plugin Manager. Изменения применяются без перезапуска. `stateDir` там изменить нельзя. Недопустимые значения или неизвестные ключи конфигурации препятствуют запуску; журнал указывает ключ.
 
-## Start and stop
+## Запуск и остановка
 
 ```sh
 scripts/dsh-superagent start
 scripts/dsh-superagent status
 ```
 
-`start` runs `dsh --profile superagent` in tmux session `dsh-superagent`, or `dsh-<profile>` for another profile. It waits up to one minute for the runtime to become ready or report a setup requirement. On a first run it prints the missing setup information. It refuses duplicate instances, including ones started outside this script.
+`start` запускает `dsh --profile superagent` в tmux-сессии `dsh-superagent`, или `dsh-<profile>` для другого профиля. Он ждёт до одной минуты, пока рантайм не станет готов или не сообщит о требовании настройки. При первом запуске он печатает недостающую информацию о настройке. Он отказывает дублирующимся экземплярам, включая запущенные вне этого скрипта.
 
-`stop` and `restart` request graceful shutdown and wait up to five minutes for Executors. They never force-kill the process or touch other tmux sessions.
+`stop` и `restart` запрашивают корректное завершение и ждут до пяти минут Исполнителей. Они никогда не убивают процесс принудительно и не трогают другие tmux-сессии.
 
-`status` prints process ids, health and setup problems. For a different profile or port, use `--profile` and `--url`, or set `DSH_SUPERAGENT_PROFILE` and `DSH_SUPERAGENT_URL`.
+`status` печатает id процессов, здоровье и проблемы настройки. Для другого профиля или порта используйте `--profile` и `--url`, или задайте `DSH_SUPERAGENT_PROFILE` и `DSH_SUPERAGENT_URL`.
 
-`status`, `start` and `restart` exit with one of four codes:
+`status`, `start` и `restart` завершаются с одним из четырёх кодов:
 
-| Code | Meaning |
+| Код | Значение |
 | --- | --- |
-| 0 | The service runs normally |
-| 1 | It does not run, runs twice, does not answer, or its runtime reports an error; a restart may fix it |
-| 2 | It runs, but a part other than the runtime, such as a Source or a Policy sync (`sync:<source id>`), reports an error; a restart does not fix it |
-| 3 | It runs and waits for setup; a restart does not fix it |
+| 0 | Служба работает нормально |
+| 1 | Она не работает, работает дважды, не отвечает, или её рантайм сообщает об ошибке; перезапуск может исправить |
+| 2 | Она работает, но часть, отличная от рантайма, например Источник или синхронизация Политики (`sync:<source id>`), сообщает об ошибке; перезапуск не исправит |
+| 3 | Она работает и ждёт настройки; перезапуск не исправит |
 
-A Source that is still starting counts as normal operation. So does a Feishu bot that setup could not check.
+Источник, который ещё запускается, считается нормальной работой. Так же и бот Feishu, который настройка не смогла проверить.
 
-`status` returns failed parts and their details under `errors`, and setup requirements under `setup`. `start` and `restart` print those problems as lines; they exit 1 if the service never comes up. Only an intentional `stop` pauses automatic recovery.
+`status` возвращает отказавшие части и их детали под `errors`, а требования настройки — под `setup`. `start` и `restart` печатают эти проблемы строками; они завершаются с кодом 1, если служба так и не поднялась. Только намеренный `stop` приостанавливает автоматическое восстановление.
 
-Each profile stores logs and control files under `.artifacts/`:
+Каждый профиль хранит журналы и управляющие файлы в `.artifacts/`:
 
-- Startup logs: `dsh-superagent-<profile>-<date>-<time>-<pid>.log`, where the pid belongs to the script. The newest 20 are kept.
-- Control files: `control/profiles/<profile>/`, containing the stop marker, lock and process id.
+- Журналы запуска: `dsh-superagent-<profile>-<date>-<time>-<pid>.log`, где pid принадлежит скрипту. Хранятся новейшие 20.
+- Управляющие файлы: `control/profiles/<profile>/`, содержащие маркер остановки, блокировку и id процесса.
 
-Open the URL printed in the log, then choose **Superagent** in the sidebar.
+Откройте URL, напечатанный в журнале, затем выберите **Superagent** в боковой панели.
 
-### Hourly check
+### Ежечасная проверка
 
-Create the hourly check in the DeepSeek Harness profile you normally use, not in `superagent`. It must keep running when the agent service is down. Ask an agent in that profile to create an hourly schedule using this prompt, with the checkout path filled in:
+Создавайте ежечасную проверку в том профиле DeepSeek Harness, которым вы обычно пользуетесь, а не в `superagent`. Она должна продолжать работать, когда служба агента не работает. Попросите агента в этом профиле создать ежечасное расписание, используя этот промпт, с подставленным путём к рабочей копии:
 
 ```text
 Check dsh-superagent: run `scripts/dsh-superagent --profile superagent status` in <checkout>. Exit 0: do nothing and say nothing. Exit 2: do not restart; tell me each part under `errors` with its detail, unless you already told me about the same ones. Exit 3: do not restart; tell me what `setup` says setup needs, unless you already told me. If it reports manually_stopped: true, leave it stopped. Otherwise (exit 1) run `scripts/dsh-superagent --profile superagent --respect-stop restart`, which exits the same way: 0 means it recovered, so say nothing; 2 and 3 are reported as above; if it exits 1 or fails otherwise, read the newest .artifacts/dsh-superagent-superagent-*.log and the Troubleshooting section of docs/006-deployment.md, fix what you can, and tell me what was wrong and what you did.
 ```
 
-`--respect-stop` preserves an intentional stop. Only `stop` writes the marker; `start` clears it. `restart` writes no marker, so the check can recover a restart whose shutdown timed out.
+`--respect-stop` сохраняет намеренную остановку. Только `stop` пишет маркер; `start` очищает его. `restart` не пишет маркер, поэтому проверка может восстановить перезапуск, чья остановка вышла за тайм-аут.
 
-## Settings
+## Настройки
 
-Setup must succeed before polling or work starts. Overview lists missing requirements and links to their settings. A settings change runs setup again. If you fix something outside the application, such as CLI authentication, choose **Check again**.
+Настройка должна завершиться успешно, прежде чем начнётся опрос или работа. Overview перечисляет недостающие требования и ссылается на их настройки. Изменение настройки снова запускает настройку. Если вы исправили что-то вне приложения, например аутентификацию CLI, выберите **Check again**.
 
-1. **Sources.** Set the GitHub repository (`owner/name`) and agent CLI, for example `/home/me/.local/bin/gh-agent`. Requests normally arrive through the agent account's notifications. A new Issue or comment mentioning the account arrives on the next poll; adding a mention by editing an existing Issue body does not. Post a new comment instead. For Feishu, set the bot CLI, chats, each chat's receive-all or mentions-only mode, and whether to receive direct messages.
-2. **Policy.** The two example rules can be edited or removed. Under **On each Source**, add the GitHub accounts and Feishu users who may ask for work; until a list has someone, no request can become a Ticket. With Feishu, a chat can be chosen to sync the list from, at startup and on **Sync now**.
-3. **Execution.** The directory root and a prepare command. To give each Ticket a checkout of the repository:
+1. **Sources.** Задайте репозиторий GitHub (`owner/name`) и CLI агента, например `/home/me/.local/bin/gh-agent`. Запросы обычно приходят через уведомления аккаунта агента. Новая Issue или комментарий, упоминающий аккаунт, приходят при следующем опросе; добавление упоминания редактированием тела существующей Issue — нет. Вместо этого оставьте новый комментарий. Для Feishu задайте CLI бота, чаты, режим каждого чата (получать всё или только упоминания), а также принимать ли прямые сообщения.
+2. **Policy.** Два примерных правила можно отредактировать или удалить. В разделе **On each Source** добавьте аккаунты GitHub и пользователей Feishu, которые могут просить о работе; пока в списке никого нет, ни один запрос не может стать Тикетом. С Feishu можно выбрать чат, из которого будет синхронизироваться список, при запуске и по **Sync now**.
+3. **Execution.** Корневой каталог и команда подготовки. Чтобы дать каждому Тикету рабочую копию репозитория:
 
    ```sh
    git -C /home/me/src/widgets fetch --no-tags "https://github.com/$DSH_SUPERAGENT_GITHUB_REPOSITORY.git" "${DSH_SUPERAGENT_GITHUB_PR_HEAD:-HEAD}:refs/dsh-superagent/$DSH_SUPERAGENT_TICKET" &&
    git -C /home/me/src/widgets worktree add -b "agent/$DSH_SUPERAGENT_NAME" "$DSH_SUPERAGENT_DIR" "refs/dsh-superagent/$DSH_SUPERAGENT_TICKET"
    ```
 
-   List personal CLIs, such as one signed in to your own account, as blocked commands.
-4. **Prompts.** Set the team sections: the GitHub disclosure line, review bots, the commit author and the auto-merge condition.
+   Перечислите личные CLI, например выполнившие вход в ваш собственный аккаунт, как заблокированные команды.
+4. **Prompts.** Задайте разделы команды: строку раскрытия на GitHub, ботов ревью, автора коммита и условие автоматического слияния.
 
-### Management API
+### API управления
 
-The panel uses a local HTTP API that agents can also call. `SETUP.md` uses it to save settings, and the service script reads `GET state`.
+Панель использует локальный HTTP API, который могут вызывать и агенты. `SETUP.md` использует его для сохранения настроек, а скрипт службы читает `GET state`.
 
-Send requests to `http://127.0.0.1:<port>/orchestrator/api/` with `x-orchestrator-request: 1`. The host must be `127.0.0.1:<port>` or `localhost:<port>`. Missing headers or an `Origin` from another site receive 403.
+Отправляйте запросы на `http://127.0.0.1:<port>/orchestrator/api/` с заголовком `x-orchestrator-request: 1`. Хост должен быть `127.0.0.1:<port>` или `localhost:<port>`. Отсутствующие заголовки или `Origin` с другого сайта получают 403.
 
-API saves have the panel's permissions. They can change execution environment and setup account fields, unlike saves made through the main Session's tools.
+Сохранения через API имеют права панели. Они могут менять среду исполнения и поля аккаунтов настройки, в отличие от сохранений, сделанных через инструменты основной Сессии.
 
-Agents may rely on these routes and fields. The other routes in `src/app/api.ts` serve the panel and change with it.
+Агенты могут полагаться на эти маршруты и поля. Остальные маршруты в `src/app/api.ts` обслуживают панель и меняются вместе с ней.
 
-| Request | Answer |
+| Запрос | Ответ |
 | --- | --- |
-| `GET state` | What every page reads: `setup`, with `problem` and `feishuProblem`, each `null` or a setup problem with `place`, `code`, `values` and `detail`, and `accounts` once setup resolved them; `health`, an entry per part, below, with `state` (`starting`, `ready`, `paused` or `error`), `detail` and `at`; `load`, the Executor Sessions `running`, the Tickets `queued` and `maxWorkers`; `paused`; and `masterId` |
-| `GET settings` | `blocks`: `policy`, `eval` and `executor`, each with its `value` and its `revision`; `sources`: the Source instances, each with `id`, `kind`, `installed`, its block's `value`, `{"enabled": …, "config": {…}}`, and `revision`, its kind's form, and its setup `problem` when it has one; `policyVersion`; and `environment`, the execution environment's `root` and `variables` |
-| `GET sources` | Each Source's status: `state` (`missing`, `off`, `error`, `setup`, `starting`, `paused` or `ready`), the `health` of its parts, its setup `problem`, the last day's `stats`, the Triggers it `filtered` in that day, and the messages it `dropped` in that day, newest drop first, each with its `channel`, `preview`, `ticket` (`id` and `title`) when it was for one, its `thread` when the store has it, and `dropped.at` and `dropped.reason`, `channelGone` or `channelIgnored` |
-| `PUT settings/<block>` with `{"value": …, "revision": n}` | Saves one block: `saved`, the block's new `revision`, `policy_changed` and `restarting`. `value` is the whole block, as `GET settings` holds it; a missing key takes its default |
-| `POST executor/pause` with `{"paused": true}` or `false` | Pauses or resumes processing: `paused` |
-| `POST setup/check` | Runs setup again by restarting dsh-superagent: `restarting: true`. Refused when setup has nothing to fix |
-| `POST policy-sync/<source id>` | Syncs that Source's allowed list now: `policy`, the Source's part as saved |
-| `GET prompts`, `PUT prompts` with `{"config", "baseRevision"}` | Reads the prompt configuration: `current`, with its `revision` and `config`, `defaults`, `sections`, the team sections in the order Sessions read them, `skillName`, the pattern of a team skill's name, `builtin`, the names a team skill cannot take, and `skillPrefix`, which Sessions load a skill's name under. Or saves it: the new `revision` |
-| `POST tickets/<id>/retry`, `POST tickets/<id>/stop` | Retries or stops a Ticket, as the panel does |
+| `GET state` | То, что читает каждая страница: `setup`, с `problem` и `feishuProblem`, каждый `null` или проблема настройки с `place`, `code`, `values` и `detail`, и `accounts`, когда настройка их разрешила; `health`, запись на каждую часть, ниже, со `state` (`starting`, `ready`, `paused` или `error`), `detail` и `at`; `load`, Сессии Исполнителей `running`, Тикеты `queued` и `maxWorkers`; `paused`; и `masterId` |
+| `GET settings` | `blocks`: `policy`, `eval` и `executor`, каждый со своим `value` и `revision`; `sources`: экземпляры Источников, каждый с `id`, `kind`, `installed`, `value` своего блока, `{"enabled": …, "config": {…}}` и `revision`, формой своего вида и своей проблемой настройки `problem`, когда она есть; `policyVersion`; и `environment`, `root` и `variables` среды исполнения |
+| `GET sources` | Состояние каждого Источника: `state` (`missing`, `off`, `error`, `setup`, `starting`, `paused` или `ready`), `health` его частей, его проблема настройки `problem`, `stats` за последний день, Триггеры, которые он `filtered` в этот день, и сообщения, которые он `dropped` в этот день, начиная с новейшей потери, каждое со своим `channel`, `preview`, `ticket` (`id` и `title`), когда оно было для одного из них, своим `thread`, когда хранилище его имеет, и `dropped.at` и `dropped.reason`, `channelGone` или `channelIgnored` |
+| `PUT settings/<block>` с `{"value": …, "revision": n}` | Сохраняет один блок: `saved`, новый `revision` блока, `policy_changed` и `restarting`. `value` — это весь блок, как его хранит `GET settings`; отсутствующий ключ принимает значение по умолчанию |
+| `POST executor/pause` с `{"paused": true}` или `false` | Приостанавливает или возобновляет обработку: `paused` |
+| `POST setup/check` | Снова запускает настройку, перезапуская dsh-superagent: `restarting: true`. Отклоняется, когда настройке нечего исправлять |
+| `POST policy-sync/<source id>` | Синхронизирует список разрешённых этого Источника сейчас: `policy`, часть Источника в сохранённом виде |
+| `GET prompts`, `PUT prompts` с `{"config", "baseRevision"}` | Читает конфигурацию промптов: `current`, со своим `revision` и `config`, `defaults`, `sections`, разделы команды в том порядке, в котором их читают Сессии, `skillName`, шаблон имени навыка команды, `builtin`, имена, которые навык команды не может принять, и `skillPrefix`, под которым Сессии загружают имя навыка. Или сохраняет её: новый `revision` |
+| `POST tickets/<id>/retry`, `POST tickets/<id>/stop` | Повторно обрабатывает или останавливает Тикет, как это делает панель |
 
-Health entries are grouped by responsibility:
+Записи здоровья сгруппированы по ответственности:
 
-| Entry | Reports |
+| Запись | Сообщает |
 | --- | --- |
-| `runtime` | The application itself |
-| `models` | Sessions waiting on a model-budget retry |
-| `evals` | Unavailable Evals from the last hour with no later judgement or dismissal |
-| `assessment`, `launch`, `delivery`, `relay`, `notice`, `reply` | Stored work described in [003 Execution](003-execution.md); delivery counts waiting work, while reply covers Channel messages |
-| `worker` | Executor Session event handling; appears after its first failure |
-| `github`, `feishu`, `history` | Source polling, events and history recovery |
-| `sync:<source id>` | Allowed-list synchronization |
+| `runtime` | Само приложение |
+| `models` | Сессии, ожидающие повторной попытки из-за бюджета модели |
+| `evals` | Недоступные Оценки за последний час без последующего решения или отклонения |
+| `assessment`, `launch`, `delivery`, `relay`, `notice`, `reply` | Сохранённая работа, описанная в [003 Execution](003-execution.md); delivery считает ожидающую работу, а reply охватывает сообщения Канала |
+| `worker` | Обработка событий Сессии Исполнителя; появляется после её первой неудачи |
+| `github`, `feishu`, `history` | Опрос Источников, события и восстановление истории |
+| `sync:<source id>` | Синхронизация списка разрешённых |
 
-A refusal has a status and `error`, its English text:
+Отказ имеет статус и `error`, его текст на английском:
 
-- 400: an invalid value (`issues`, each with its `path`), a failed account check (`setup`), a fixed refusal (`code` and `values`), or a body that is not JSON or is too large.
-- 404: something that does not exist.
-- 409: a stale revision.
-- 500: anything else.
+- 400: недопустимое значение (`issues`, каждый со своим `path`), неудачная проверка аккаунта (`setup`), фиксированный отказ (`code` и `values`) или тело, которое не является JSON или слишком велико.
+- 404: то, что не существует.
+- 409: устаревшая ревизия.
+- 500: всё остальное.
 
-The blocks:
+Блоки:
 
-- `source:github`, `source:feishu`: `{"enabled": true, "config": {…}}`. GitHub's config has `repository` and `cli`, and the switches `observeIssues`, `observePulls`, `observeComments` and `observeCi`, off by default, which receive every new Issue, new pull request and comment in the repository and the default branch's CI; Feishu's has `cli`, `chats` as `[{"chatId": "oc_…", "name": "…", "listen": "mentions"}]` (or `"all"`), `directMessages`, and `otherChats` as `"none"` or `"mentions"`.
-- `policy`: `{"rules": […], "sources": {"github": {"allowed": [{"id": "<login>"}], "bots": [{"id": "dependabot[bot]"}]}, "feishu": {"allowed": [{"id": "ou_…", "name": "…"}], "syncChat": "oc_…", "admission": {"oc_…": {"unlistedAddressed": "explicit"}}}}}`. `bots` lists the bots whose messages may become inferred candidates. An `admission` row is keyed by chat id, `other` or `direct` for Feishu, and by `issues`, `pulls`, `comments` or `ci` for GitHub; an unset cell takes its default (see [002 Authorization](002-authorization.md)).
-- `eval`: `mode`, `timeoutSeconds` and `model`.
-- `executor`: `model`, `maxWorkers`, `directory`, `prepare` and `blockedCommands`. The processing pause is a setting of its own, `paused`, which `POST executor/pause` sets.
+- `source:github`, `source:feishu`: `{"enabled": true, "config": {…}}`. Конфигурация GitHub имеет `repository` и `cli` и переключатели `observeIssues`, `observePulls`, `observeComments` и `observeCi`, выключенные по умолчанию, которые принимают каждую новую Issue, новый pull request и комментарий в репозитории и CI основной ветки; у Feishu есть `cli`, `chats` как `[{"chatId": "oc_…", "name": "…", "listen": "mentions"}]` (или `"all"`), `directMessages` и `otherChats` как `"none"` или `"mentions"`.
+- `policy`: `{"rules": […], "sources": {"github": {"allowed": [{"id": "<login>"}], "bots": [{"id": "dependabot[bot]"}]}, "feishu": {"allowed": [{"id": "ou_…", "name": "…"}], "syncChat": "oc_…", "admission": {"oc_…": {"unlistedAddressed": "explicit"}}}}}`. `bots` перечисляет ботов, чьи сообщения могут стать предполагаемыми кандидатами. Строка `admission` имеет ключ по id чата, `other` или `direct` для Feishu, и по `issues`, `pulls`, `comments` или `ci` для GitHub; незаполненная ячейка принимает значение по умолчанию (см. [002 Authorization](002-authorization.md)).
+- `eval`: `mode`, `timeoutSeconds` и `model`.
+- `executor`: `model`, `maxWorkers`, `directory`, `prepare` и `blockedCommands`. Пауза обработки — это отдельная настройка, `paused`, которую устанавливает `POST executor/pause`.
 
-Changing a repository or CLI runs the corresponding setup check first. A failed check returns 400 with details in `setup`. A successful account change, or any save while setup is pending, returns `restarting: true`. The API is temporarily unavailable while the application restarts.
+Изменение репозитория или CLI сначала запускает соответствующую проверку настройки. Неудачная проверка возвращает 400 с деталями в `setup`. Успешное изменение аккаунта или любое сохранение, пока настройка ожидает, возвращает `restarting: true`. API временно недоступен, пока приложение перезапускается.
 
 ```sh
 api=http://127.0.0.1:3082/orchestrator/api
@@ -213,62 +213,62 @@ curl -s -X PUT -H 'x-orchestrator-request: 1' -H 'content-type: application/json
   -d "{\"value\": {\"enabled\": true, \"config\": {\"repository\": \"acme/widgets\", \"cli\": \"$HOME/.local/bin/gh-agent\"}}, \"revision\": $rev}"
 ```
 
-## Setup checks
+## Проверки настройки
 
-Setup uses the DeepSeek Harness subprocess service, as worker shells do. It removes environment variables whose names contain KEY, PASSWORD, SECRET or TOKEN.
+Настройка использует субпроцессный сервис DeepSeek Harness, как и оболочки воркеров. Она удаляет переменные окружения, чьи имена содержат KEY, PASSWORD, SECRET или TOKEN.
 
-Setup verifies the GitHub repository and the agent's push access, writes the worker environment, and checks that git uses only the agent credentials for github.com. A Feishu setup failure disables only the Feishu Source.
+Настройка проверяет репозиторий GitHub и доступ агента на запись, записывает окружение воркера и проверяет, что git использует только учётные данные агента для github.com. Неудача настройки Feishu отключает только Источник Feishu.
 
-The process environment that setup writes:
+Окружение процесса, которое записывает настройка:
 
-- **Command shims** in `<stateDir>/worker-bin`, first on `PATH`: `gh` runs the agent's CLI; `lark-cli` runs the bot's CLI; blocked commands fail. A shim removes its own directory from `PATH` before it runs its target.
-- **git configuration** in `<stateDir>/worker-gitconfig`: replaces the operator's global and system git configuration. It selects the agent CLI as the github.com credential helper, rewrites GitHub SSH addresses to HTTPS and defines Git LFS filters. Personal git settings such as an HTTP proxy do not apply. No commit identity is set here, git never prompts for credentials, and `GH_TOKEN` and `GITHUB_TOKEN` are removed.
+- **Командные шимы** в `<stateDir>/worker-bin`, первыми в `PATH`: `gh` запускает CLI агента; `lark-cli` запускает CLI бота; заблокированные команды завершаются ошибкой. Шим удаляет свой собственный каталог из `PATH`, прежде чем запустить свою цель.
+- **git-конфигурация** в `<stateDir>/worker-gitconfig`: заменяет глобальную и системную git-конфигурацию оператора. Она выбирает CLI агента как помощник учётных данных github.com, переписывает SSH-адреса GitHub в HTTPS и определяет фильтры Git LFS. Личные настройки git, например HTTP-прокси, не применяются. Идентичность коммита здесь не задаётся, git никогда не запрашивает учётные данные, а `GH_TOKEN` и `GITHUB_TOKEN` удаляются.
 
-A file in `worker-bin` or `worker-gitconfig` that dsh-superagent did not write stops setup. A Ticket directory inside a git repository whose own configuration adds credentials fails the Ticket.
+Файл в `worker-bin` или `worker-gitconfig`, который не записал dsh-superagent, останавливает настройку. Каталог Тикета внутри git-репозитория, чья собственная конфигурация добавляет учётные данные, приводит к неудаче Тикета.
 
-## Try it
+## Попробуйте
 
-From an allowed GitHub account, open an Issue or post a comment containing `@<agent login> <request>`. Within a polling interval (one minute by default), Overview should show a Ticket. The agent acknowledges the request, works in its own Session and directory, and delivers in the original conversation. For Feishu, mention the bot in a configured chat.
+Со разрешённого аккаунта GitHub откройте Issue или оставьте комментарий, содержащий `@<agent login> <request>`. В течение интервала опроса (одна минута по умолчанию) Overview должен показать Тикет. Агент подтверждает запрос, работает в своей собственной Сессии и каталоге и отвечает в исходной беседе. Для Feishu упомяните бота в настроенном чате.
 
-## Upgrade
+## Обновление
 
-1. Wait until no Executor is in the middle of a turn.
-2. Back up `<stateDir>/orchestrator.sqlite`.
-3. Run `git pull && pnpm install && pnpm build`.
-4. Run `scripts/dsh-superagent restart` and inspect its status.
+1. Дождитесь, пока ни один Исполнитель не будет в середине хода.
+2. Создайте резервную копию `<stateDir>/orchestrator.sqlite`.
+3. Выполните `git pull && pnpm install && pnpm build`.
+4. Выполните `scripts/dsh-superagent restart` и проверьте его состояние.
 
-A restart ends running Assignments and starts replacements with recovery notes. Team text and overridden prompt parts are retained; parts without overrides follow the new defaults. Review parts marked **Default updated** after upgrading.
+Перезапуск завершает выполняющиеся Назначения и запускает замены с заметками о восстановлении. Текст команды и переопределённые части промптов сохраняются; части без переопределений следуют новым значениям по умолчанию. После обновления просмотрите части, помеченные **Default updated**.
 
-A database migrated by a newer version cannot be opened by an older one. Rollback therefore requires the pre-upgrade backup. After upgrading DeepSeek Harness itself, restart the running instance so the panel loads matching artifacts.
+База данных, перенесённая более новой версией, не может быть открыта более старой. Поэтому откат требует резервной копии до обновления. После обновления самого DeepSeek Harness перезапустите работающий экземпляр, чтобы панель загрузила совпадающие артефакты.
 
-### Agent presets
+### Пресеты агента
 
-The worker and router presets move shell commands to the background after 5 seconds. A Session cannot load without its preset. Keep the `dsh-superagent-worker` and `dsh-superagent-router` rows in `cordis.patch.yml` while their Sessions are in use; otherwise resume fails with `agent-preset/not-found`.
+Пресеты воркера и роутера переводят команды оболочки в фоновый режим через 5 секунд. Сессия не может загрузиться без своего пресета. Держите строки `dsh-superagent-worker` и `dsh-superagent-router` в `cordis.patch.yml`, пока их Сессии используются; иначе возобновление завершится с `agent-preset/not-found`.
 
-## Troubleshooting
+## Устранение неполадок
 
-Setup problems appear on the overview with a link to the fix, in the panel's language; the log and the API show the English text below.
+Проблемы настройки появляются на обзоре со ссылкой на исправление, на языке панели; журнал и API показывают приведённый ниже английский текст.
 
-| Symptom | Cause and fix |
+| Симптом | Причина и исправление |
 | --- | --- |
-| `The agent GitHub CLI is not set.` | Set the agent's CLI on the GitHub card |
-| `The agent GitHub CLI was not found.` | Set the wrapper's absolute path, or a command name on `PATH` |
-| `The agent GitHub CLI cannot read its account` | Sign the wrapper in with `auth login` |
-| `@… cannot read …` or `@… cannot push to …` | Give the agent account write access to the repository |
-| `The GitHub Source names no repository.` | Set the repository, `owner/name`, on the GitHub card |
-| A Ticket fails with `The prepare command failed: …` | The output names the cause, such as a wrong clone path; fix the command, then retry the Ticket |
-| `git does not read the github.com credential configuration dsh-superagent writes` | Install git 2.32 or later |
-| A Ticket fails with `The git configuration of the repository in … sets …` | Remove the named credential or `http.*.extraheader` settings from the clone's `.git/config` |
-| `… was not written by dsh-superagent` | Move the named file out of `<stateDir>/worker-bin` or `<stateDir>/worker-gitconfig`, or choose another `stateDir` |
-| `The bot lark-cli allows user identities` | Point the Feishu Source at a bot-only configuration, as in Feishu bot above |
-| `The bot lark-cli does not work.` or `The bot identity of app … is …` | Check the configuration's app id and secret |
-| `The Feishu bot is not a member of the chat.` | Add the bot to the chat in the chat's settings; the next attempt succeeds |
-| `status` exits 2 | A part reports an error, which a restart does not fix: `errors` names each part, as listed under Management API, with its detail; each part clears its own entry once it works again |
-| `status` exits 3 | Setup waits: `setup` says what is missing, and the overview links to the setting that fixes it |
-| `status` exits 1 | The service does not run, runs twice, does not answer, or its runtime reports an error; the output and the newest log say which |
-| `… timed out after 90 s`, `… was stopped by …`, `… exited with code …` or `… could not run: …` | A CLI failed without printing why; run the named program by hand as the operator's user to see its own message |
-| The panel says dsh-superagent is not answering | It is restarting, or did not start because of its configuration; the DeepSeek Harness log names the cause |
-| `dsh-superagent configuration has keys it does not use` (log) | Remove the named keys; the message says where each value lives now |
-| The log says the plugin is incompatible with the running dsh | Install a DeepSeek Harness version within the `engines.dsh` range |
-| The panel shows "Failed to load plugins" after a DeepSeek Harness upgrade | Restart the running instance |
-| Nothing happens after a mention | Check that the author is on the Source's allowed list, the Source is on, and processing is not paused. On GitHub, a mention added by editing an Issue's body is not received; mention the agent in a comment |
+| `The agent GitHub CLI is not set.` | Задайте CLI агента на карточке GitHub |
+| `The agent GitHub CLI was not found.` | Задайте абсолютный путь обёртки или имя команды в `PATH` |
+| `The agent GitHub CLI cannot read its account` | Выполните в обёртке вход через `auth login` |
+| `@… cannot read …` или `@… cannot push to …` | Дайте аккаунту агента права на запись в репозиторий |
+| `The GitHub Source names no repository.` | Задайте репозиторий, `owner/name`, на карточке GitHub |
+| Тикет завершается с `The prepare command failed: …` | Вывод называет причину, например неверный путь клона; исправьте команду, затем повторите Тикет |
+| `git does not read the github.com credential configuration dsh-superagent writes` | Установите git 2.32 или новее |
+| Тикет завершается с `The git configuration of the repository in … sets …` | Удалите названные учётные данные или настройки `http.*.extraheader` из `.git/config` клона |
+| `… was not written by dsh-superagent` | Переместите названный файл из `<stateDir>/worker-bin` или `<stateDir>/worker-gitconfig` или выберите другой `stateDir` |
+| `The bot lark-cli allows user identities` | Укажите Источнику Feishu конфигурацию только для бота, как в разделе про бота Feishu выше |
+| `The bot lark-cli does not work.` или `The bot identity of app … is …` | Проверьте id приложения и секрет в конфигурации |
+| `The Feishu bot is not a member of the chat.` | Добавьте бота в чат в настройках чата; следующая попытка завершится успешно |
+| `status` завершается с 2 | Часть сообщает об ошибке, которую перезапуск не исправит: `errors` называет каждую часть, как перечислено в разделе про API управления, с её деталями; каждая часть очищает свою запись, как только снова работает |
+| `status` завершается с 3 | Настройка ожидает: `setup` говорит, чего не хватает, а обзор ссылается на настройку, которая это исправляет |
+| `status` завершается с 1 | Служба не работает, работает дважды, не отвечает, или её рантайм сообщает об ошибке; вывод и новейший журнал говорят, что именно |
+| `… timed out after 90 s`, `… was stopped by …`, `… exited with code …` или `… could not run: …` | CLI завершился ошибкой, не напечатав причину; запустите названную программу вручную от имени пользователя оператора, чтобы увидеть её собственное сообщение |
+| Панель говорит, что dsh-superagent не отвечает | Он перезапускается или не запустился из-за своей конфигурации; журнал DeepSeek Harness называет причину |
+| `dsh-superagent configuration has keys it does not use` (журнал) | Удалите названные ключи; сообщение говорит, где теперь живёт каждое значение |
+| Журнал говорит, что плагин несовместим с работающим dsh | Установите версию DeepSeek Harness в пределах диапазона `engines.dsh` |
+| Панель показывает "Failed to load plugins" после обновления DeepSeek Harness | Перезапустите работающий экземпляр |
+| Ничего не происходит после упоминания | Проверьте, что автор в списке разрешённых Источника, Источник включён и обработка не приостановлена. На GitHub упоминание, добавленное редактированием тела Issue, не принимается; упомяните агента в комментарии |

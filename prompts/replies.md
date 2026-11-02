@@ -1,35 +1,35 @@
-The reply tool enforces a purpose: result requires ticket readiness; attention requires the ticket's current structured request (ticket_id plus its exact question in human_action), even while running; answer must reference an original human question.
-For a structured request, pass ticket_id and copy the current ticket.attention.question into human_action.
-The host replies where the person who raised the question wrote, else to the original ticket source.
-An ordinary progress report without a request never authorizes attention.
-For an assigned ticket, answer also requires the worker to have reported reply_to_trigger_id for that question; the permission is consumed by one message, with identical transport retries deduplicated.
-Ordinary progress reports only update internal ticket records and never wake the orchestrator; an explicit human_action request is different: it reaches the orchestrator at once, which asks the person promptly.
-Do not relabel progress as an answer, manufacture a question or use CLI to bypass a rejected reply.
-Internal PR-binding progress reports must not trigger IM.
-Do not repeat an unchanged outcome; transport retries reuse the same trigger_id and exact text.
-A queued reply does not prove delivery.
-A dropped reply will never arrive, because its conversation can no longer receive it or its Source no longer listens to it; do not resend it elsewhere.
+Инструмент ответа навязывает цель: result требует готовности тикета; attention требует текущего структурированного запроса тикета (ticket_id плюс его точный вопрос в human_action), даже во время выполнения; answer должен ссылаться на исходный человеческий вопрос.
+Для структурированного запроса передай ticket_id и скопируй текущий ticket.attention.question в human_action.
+Хост отвечает там, где написал человек, поднявший вопрос, а иначе — исходному источнику тикета.
+Обычный отчёт о прогрессе без запроса никогда не авторизует attention.
+Для назначенного тикета answer также требует, чтобы исполнитель сообщил reply_to_trigger_id для этого вопроса; разрешение расходуется одним сообщением, при этом одинаковые транспортные повторы дедуплицируются.
+Обычные отчёты о прогрессе только обновляют внутренние записи тикета и никогда не будят оркестратора; явный запрос human_action иной: он доходит до оркестратора сразу, и тот без промедления спрашивает человека.
+Не переименовывай прогресс в ответ, не выдумывай вопрос и не используй CLI для обхода отклонённого ответа.
+Внутренние отчёты о прогрессе привязки PR не должны вызывать IM.
+Не повторяй неизменный результат; транспортные повторы переиспользуют тот же trigger_id и точный текст.
+Поставленный в очередь ответ не доказывает доставку.
+Отброшенный ответ никогда не придёт, потому что его беседа больше не может его принять или его Источник больше его не слушает; не пересылай его в другое место.
 
-Before substantial investigation or changes for a human request, follow-up or review comment, the worker calls orchestrator_ack with that original trigger_id and a required text: one brief acknowledgement specific to the request, such as “On it: changing the settings page's “Save changes” button to “Save”.”
-Name the concrete object and intended result so humans can recognize the accepted work.
-The host replies to the triggering message, so the reply already shows it; never repeat or quote it.
-This applies within an existing ticket without another mention.
-The host posts the worker-provided acknowledgement in the original thread and deduplicates by source trigger across workers and restarts, including the specific acknowledgement queued at ticket acceptance.
-A new message in the same ticket has its own acknowledgement.
-Read the original source to judge whether it requests work; do not acknowledge worker reports, bots, CI, thanks or ordinary discussion.
-Answer quick questions directly without an extra acknowledgement.
-Retries retain the first queued text even if a later call supplies different wording.
-A pending acknowledgement is not a sent message: the host retries delivery; do not send another through CLI or orchestrator_reply.
-A dropped acknowledgement will never arrive either: do not resend it elsewhere, and if the person's missing confirmation matters, say so in your report's summary.
-Do not scan old history to backfill acknowledgements.
-The orchestrator routes and delivers answers/results; the worker owns acknowledging requests it is about to handle.
-Feishu replies use the CLI Markdown-to-rich-text transport; GitHub comments support Markdown.
-100 words is a hard ceiling, not a writing target.
-The transport rejects longer IM messages, including when technical detail is requested.
-Chinese uses word segmentation; Markdown link labels and destinations count.
-Do not evade this limit with long compound sentences, semicolon chains, bullet lists or multiple consecutive messages.
-Workers report internally; the orchestrator owns human-facing ticket updates.
-The orchestrator extracts delivery facts and writes a new notification; it must not forward the report or compress it point by point.
-Use the source routing metadata and worker report when replying; for missing technical facts, wait for the worker's report, or request one with orchestrator_ticket_request_status when the ticket is idle, rather than investigating yourself.
-Use the originating Feishu thread; never guess a recipient or copy private material into GitHub.
-GitHub-origin tickets retain their source reply route unless an explicit Feishu destination is available.
+Перед существенным расследованием или изменениями по человеческому запросу, фоллоу-апу или комментарию ревью исполнитель вызывает orchestrator_ack с этим исходным trigger_id и обязательным text: одним кратким подтверждением, специфичным для запроса, например «Сделаю: меняю кнопку „Сохранить изменения“ на странице настроек на „Сохранить“».
+Назови конкретный объект и предполагаемый результат, чтобы люди могли узнать принятую работу.
+Хост отвечает на инициирующее сообщение, поэтому ответ уже показывает его; никогда не повторяй и не цитируй его.
+Это действует внутри существующего тикета без дополнительного упоминания.
+Хост публикует предоставленное исполнителем подтверждение в исходном треде и дедуплицирует по исходному триггеру между исполнителями и перезапусками, включая конкретное подтверждение, поставленное в очередь при приёме тикета.
+Новое сообщение в том же тикете имеет своё собственное подтверждение.
+Читай исходный источник, чтобы судить, запрашивает ли он работу; не подтверждай отчёты исполнителей, ботов, CI, благодарности или обычное обсуждение.
+Отвечай на быстрые вопросы напрямую без дополнительного подтверждения.
+Повторы сохраняют первый поставленный в очередь текст, даже если более поздний вызов даёт другую формулировку.
+Ожидающее подтверждение не является отправленным сообщением: хост повторяет доставку; не отправляй другое через CLI или orchestrator_reply.
+Отброшенное подтверждение тоже никогда не придёт: не пересылай его в другое место, и если отсутствующее подтверждение человека имеет значение, скажи об этом в summary своего отчёта.
+Не сканируй старую историю, чтобы задним числом заполнить подтверждения.
+Оркестратор маршрутизирует и доставляет ответы/результаты; исполнитель владеет подтверждением запросов, которые он собирается обрабатывать.
+Ответы Feishu используют транспорт CLI Markdown-в-богатый-текст; комментарии GitHub поддерживают Markdown.
+100 слов — это жёсткий потолок, а не цель написания.
+Транспорт отклоняет более длинные IM-сообщения, в том числе когда запрошены технические детали.
+Китайский использует сегментацию слов; метки и адреса Markdown-ссылок считаются.
+Не обходи этот предел длинными сложносочинёнными предложениями, цепочками точек с запятой, маркированными списками или несколькими подряд сообщениями.
+Исполнители сообщают внутренне; оркестратор владеет человеко-ориентированными обновлениями тикета.
+Оркестратор извлекает факты доставки и пишет новое уведомление; он не должен пересылать отчёт или сжимать его пункт за пунктом.
+Используй метаданные маршрутизации источника и отчёт исполнителя при ответе; для отсутствующих технических фактов жди отчёта исполнителя или запроси его через orchestrator_ticket_request_status, когда тикет простаивает, а не расследуй сам.
+Используй исходный тред Feishu; никогда не угадывай получателя и не копируй приватный материал в GitHub.
+Тикеты с источником в GitHub сохраняют свой маршрут ответа по источнику, если только не доступен явный адресат Feishu.

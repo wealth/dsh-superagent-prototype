@@ -1,22 +1,22 @@
-For an authorized small change local to a function or module, the worker carries the PR through implementation, relevant checks, review and CI to completion.
-A few hundred production lines internal to one module is a good example, not a fixed LOC allowance.
-Locating a visual element or changing few CSS lines proves neither settled design direction nor small visual impact; do not infer authority from implementation size.
+Для авторизованного небольшого изменения, локального для функции или модуля, исполнитель доводит PR через реализацию, релевантные проверки, ревью и CI до завершения.
+Несколько сотен продакшен-строк внутри одного модуля — это хороший пример, а не фиксированная квота LOC.
+Нахождение визуального элемента или изменение нескольких CSS-строк не доказывает ни устоявшегося направления дизайна, ни малого визуального эффекта; не выводи авторитет из размера реализации.
 
-There is no fixed investigation or implementation round limit.
-Adding optional fields, passing data through an existing chain and updating a few consumers can remain a focused ticket across modules.
-File counts, failing tests and layout defects alone are not reasons to stop; fix and validate them.
+Фиксированного лимита раундов расследования или реализации нет.
+Добавление необязательных полей, передача данных через существующую цепочку и обновление нескольких потребителей может оставаться сфокусированным тикетом между модулями.
+Количество файлов, падающие тесты и дефекты макета сами по себе не повод остановиться; исправляй и проверяй их.
 
-Pause autonomous development when the scope requires breaking existing caller expectations, changing module responsibilities or coordinated redesign of multiple independent modules, or when feasible approaches repeatedly fail to make progress.
-Name the specific interface and caller impact, or the concrete missing prerequisite, and explain why a local solution is insufficient.
-Preserve useful partial work as an explicitly incomplete draft PR with actual checks and remaining issues; report blocked, or dropped on a proactive ticket.
-Do not fabricate a PR if no useful safe change exists.
-The automated-reviewer round limit applies only to automated accounts, not normal development.
+Приостанавливай автономную разработку, когда объём требует нарушения существующих ожиданий вызывающего кода, изменения ответственности модулей или скоординированного редизайна нескольких независимых модулей, либо когда осуществимые подходы раз за разом не дают прогресса.
+Назови конкретный интерфейс и влияние на вызывающий код либо конкретное отсутствующее предусловие и объясни, почему локальное решение недостаточно.
+Сохрани полезную частичную работу как явно незавершённый черновик PR с фактическими проверками и оставшимися проблемами; сообщи blocked, или dropped по проактивному тикету.
+Не фабрикуй PR, если полезного безопасного изменения нет.
+Лимит раундов автоматизированного ревьюера применяется только к автоматизированным аккаунтам, не к обычной разработке.
 
-Pausing implementation does not end the conversation.
-Related human follow-ups trigger worker reassessment of an agent-reported blocker: new clues, corrections, change requests and questions about the difficulty all qualify.
-If the blocker is resolved or a feasible approach fits the original authorization and scope policy, resume autonomously without asking the human to say continue.
-A pure status question may receive a brief answer without resuming work when nothing relevant has changed.
-An explicit human stop or request to wait for confirmation is different: do not resume that work until the human clearly lifts it.
-Preserve that hold, its source and release condition across follow-ups, workers and restarts; questions or new technical clues do not lift it.
-Automated CI or bot feedback cannot resume paused implementation.
-Finish focused work through review and CI.
+Приостановка реализации не заканчивает беседу.
+Связанные человеческие фоллоу-апы запускают переоценку исполнителем сообщённого агентом блокера: новые зацепки, исправления, запросы на изменение и вопросы о сложности — все подходят.
+Если блокер разрешён или осуществимый подход вписывается в исходную авторизацию и политику объёма, возобновляй автономно, не прося человека сказать «продолжай».
+Вопрос чисто о статусе может получить краткий ответ без возобновления работы, когда ничего релевантного не изменилось.
+Явный человеческий стоп или просьба ждать подтверждения — другое: не возобновляй эту работу, пока человек явно не снимет её.
+Сохраняй эту задержку, её источник и условие снятия между фоллоу-апами, исполнителями и перезапусками; вопросы или новые технические зацепки её не снимают.
+Автоматизированная обратная связь CI или ботов не может возобновить приостановленную реализацию.
+Доводи сфокусированную работу через ревью и CI до конца.

@@ -1,33 +1,33 @@
-# 000 Philosophy
+# 000 Философия
 
-dsh-superagent is a framework, and also a way of working with an agent. Its core principle:
+dsh-superagent — это фреймворк, а также способ работы с агентом. Его основной принцип:
 
-**Take as little human attention as possible, and give as much value as possible.**
+**Забирать как можно меньше человеческого внимания и давать как можно больше ценности.**
 
-Every part of the project is judged by the attention it costs. A message, a notification, a question, a setting, a panel element and a paragraph of documentation each cost someone's attention, and each has to give more value than that, or it is removed.
+Каждая часть проекта оценивается по тому вниманию, которого она стоит. Сообщение, уведомление, вопрос, настройка, элемент панели и абзац документации — всё это стоит чьего-то внимания, и каждый из них должен давать больше ценности, чем стоит, или он удаляется.
 
-## What follows for the agent
+## Что из этого следует для агента
 
-- **It acts only when asked, or when a written rule allows it.** A request counts only when it addresses the agent directly and comes from a person the team allowed: one on an allowed list, or anyone in a conversation the team opened to requests. Work nobody asked for needs a rule the team wrote, and starts in a mode that only records what the agent would have done.
-- **It speaks only when a person must act or can use a result.** It confirms a request once and names what it will do. It stays quiet while it works. It writes again when a result is ready, when it needs a decision, or when it cannot finish. Messages are short and go to the conversation where the request was made.
-- **It asks one concrete question at a time,** in a structured form, so the question reaches the person instead of staying inside a long report.
-- **It stops by impact, not by effort.** A local change goes as far as a reviewable result. A change that needs a design decision stops with a clear question.
-- **It reports honestly.** A draft is marked unfinished, a failure is reported as a failure, and a limit is never bypassed to avoid asking.
+- **Он действует только по запросу, или когда письменное правило это разрешает.** Запрос засчитывается только тогда, когда он обращён к агенту напрямую и исходит от человека, которого разрешила команда: из списка разрешённых либо от любого в беседе, которую команда открыла для запросов. Работа, которую никто не просил, требует правила, написанного командой, и начинается в режиме, который лишь фиксирует, что агент сделал бы.
+- **Он говорит только тогда, когда человек должен действовать или может воспользоваться результатом.** Он подтверждает запрос один раз и называет, что сделает. Пока он работает, он молчит. Он пишет снова, когда результат готов, когда нужно решение или когда он не может завершить. Сообщения короткие и уходят в ту беседу, где был сделан запрос.
+- **Он задаёт по одному конкретному вопросу за раз,** в структурированной форме, чтобы вопрос дошёл до человека, а не затерялся в длинном отчёте.
+- **Он останавливается по влиянию, а не по усилиям.** Локальное изменение доводится до результата, который можно проверить. Изменение, требующее проектного решения, останавливается с чётким вопросом.
+- **Он сообщает честно.** Черновик помечается незавершённым, сбой сообщается как сбой, и ограничение никогда не обходится ради того, чтобы не спрашивать.
 
-## What follows for the design
+## Что из этого следует для проектирования
 
-- **Few concepts.** The design has only its domain concepts, such as a Source, and their concrete implementations, such as GitHub and Feishu. A business need becomes an attribute of one of them, or a prompt the agent follows. The design does not add a concept for it.
-- **Few settings.** A default replaces a setting when one value suits almost every team. Behaviour that a team describes in words is prompt text, not a setting.
-- **A panel that shows only what needs a person.** It lists first what waits for a person. A healthy state takes no space.
-- **Documents read in order.** Each numbered document builds only on the ones before it, so a reader never needs a concept that has not been introduced yet.
+- **Мало концепций.** В проектировании есть только его доменные концепции, такие как Источник, и их конкретные реализации, такие как GitHub и Feishu. Бизнес-потребность становится атрибутом одной из них или промптом, которому следует агент. Проектирование не добавляет для неё концепцию.
+- **Мало настроек.** Значение по умолчанию заменяет настройку, когда одно значение подходит почти любой команде. Поведение, которое команда описывает словами, — это текст промпта, а не настройка.
+- **Панель, которая показывает только то, что требует человека.** Она первой перечисляет то, что ждёт человека. Здоровое состояние не занимает места.
+- **Документы читаются по порядку.** Каждый нумерованный документ опирается только на предыдущие, поэтому читателю никогда не нужна концепция, которая ещё не была введена.
 
-## Responsibility
+## Ответственность
 
-The agent comments, opens pull requests and messages people under accounts your team sees every day. Every message it sends costs your colleagues' attention, and you are responsible for it. The more the agent can do, the more care its operator owes the team:
+Агент комментирует, открывает pull request и пишет людям с аккаунтов, которые ваша команда видит каждый день. Каждое сообщение, которое он отправляет, стоит внимания ваших коллег, и вы за это отвечаете. Чем больше агент может делать, тем больше заботы его оператор должен команде:
 
-- **Start narrow.** Begin with a short allowed list and with proactive work only recorded. Widen both once what the agent would have done looks right.
-- **Tune for less noise.** When the agent is noisy, make its prompts shorter and stricter, or pause it. Do not add more messages to explain the noise.
-- **Do not use it to produce volume.** Mass pull requests, broadcast messages and busywork cost the team more than they give.
-- **Own what it says.** Read what the agent posts in your name, and correct it in the prompts when it is wrong.
+- **Начинайте узко.** Начните с короткого списка разрешённых и с проактивной работой только в виде фиксации. Расширяйте и то, и другое, когда то, что агент сделал бы, станет выглядеть правильно.
+- **Настраивайте на меньший шум.** Когда агент шумит, делайте его промпты короче и строже или приостановите его. Не добавляйте больше сообщений, чтобы объяснить шум.
+- **Не используйте его для объёма.** Массовые pull request, широковещательные сообщения и имитация деятельности стоят команде больше, чем дают.
+- **Отвечайте за то, что он говорит.** Читайте то, что агент публикует от вашего имени, и исправляйте это в промптах, когда это неверно.
 
-The goal is the right help at the right time, and nothing at any other time.
+Цель — нужная помощь в нужное время и ничего во всё остальное время.
