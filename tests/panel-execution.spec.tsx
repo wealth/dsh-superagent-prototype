@@ -61,13 +61,13 @@ it('shows a Ticket with its stage, its Mandate details with the Trigger and Deci
   // A Thread this Ticket follows reads as subscribed on its page, though no other Ticket follows it.
   expect(all('.dt-list .dt-ticket .dt-stage').map(stage => stage.textContent)).toContain(zh.threadSubscribed)
   expect(all('.dt-list .dt-ticket .dt-stage').map(stage => stage.textContent)).not.toContain(zh.threadUnsubscribed)
-  expect(all('.dt-status-line .dt-lv').map(item => item.textContent)).toEqual(['授权 明确', '发起 飞书 · Alice', expect.stringMatching(/^更新 /)])
+  expect(all('.dt-status-line .dt-lv').map(item => item.textContent)).toEqual(['授权 明确', '发起 Mattermost · Alice', expect.stringMatching(/^更新 /)])
   for (const expected of ['修复登录页回归', '点名方式@ 智能体', '名单里的人明确请求，由主 Session 接单', '未送达：等待派工运行',
     'Alice：顺便改标题']) expect(text()).toContain(expected)
-  expect(all('.dt-chip').map(chip => chip.textContent)).toContain('飞书团队群')
+  expect(all('.dt-chip').map(chip => chip.textContent)).toContain('Mattermost团队频道')
   await click(zh['term.channel'])
-  expect(all('.dt-disclosure-body a').map(link => [link.textContent, link.getAttribute('href')])).toEqual([['飞书消息',
-    'https://applink.feishu.cn/client/chat/open?openChatId=oc_1'], ['GitHub #42', 'https://github.com/acme/widgets/issues/42']])
+  expect(all('.dt-disclosure-body a').map(link => [link.textContent, link.getAttribute('href')])).toEqual([['Mattermost消息',
+    'https://mattermost.test/_redirect/pl/proot000000000000000000000'], ['GitHub #42', 'https://github.com/acme/widgets/issues/42']])
   await click(zh['term.environment'])
   expect(all('.dt-disclosure-body .dt-table tr').map(row => row.textContent)).toEqual(['DSH_SUPERAGENT_DIR/w/t1',
     'DSH_SUPERAGENT_GITHUB_NUMBER—'])
@@ -91,8 +91,8 @@ it('links a question to its Channel, folds consecutive automated messages among 
     '2026-09-22T00:06:00Z', 1), ci('i2', '2026-09-22T00:05:00Z', 0)] }
   await mount()
   await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
-  expect(all('.dt-banner a').map(link => [link.textContent, link.getAttribute('href')])).toEqual([['去飞书回答',
-    'https://applink.feishu.cn/client/chat/open?openChatId=oc_1']])
+  expect(all('.dt-banner a').map(link => [link.textContent, link.getAttribute('href')])).toEqual([['去Mattermost回答',
+    'https://mattermost.test/_redirect/pl/proot000000000000000000000']])
   await click('已送达的输入 · 2')
   expect(all('.dt-disclosure-body .dt-row-title').map(title => title.textContent)).toEqual(['自动通知：CI of PR #42 at abc1234: 10 checks, 1 failed, 0 running.'])
   await click('同一发送者之前还有 1 条自动消息')

@@ -12,7 +12,7 @@ it('leads the overview with the pending Tickets, then problems, the last day and
   expect(all('[role="tab"]').map(tab => tab.textContent)).toEqual(['概览', '来源', '触发', '评估', '执行', '设置'])
   expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待处理工单2', '系统问题2', '过去 24 小时详情 ›', '执行器详情 ›'])
   expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '待处理失败'])
-  expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
+  expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['Mattermost 来源异常', '评估未完成：这个文案好奇怪'])
   // Actions sit below the title and Threads, apart from the stage, each with its icon.
   expect(all('.dt-ticket').every(row => row.querySelector('.dt-ticket-stage button, .dt-ticket-stage a') === null
     && [...row.querySelectorAll('.dt-ticket-actions button, .dt-ticket-actions a')].every(action => action.querySelector('svg')))).toBe(true)
@@ -56,8 +56,8 @@ it('follows the last day\'s counts to the status of each stage', async () => {
 it('offers each Ticket that needs a person its actions on the overview: answer in its Channel, retry or open a failed worker, and stop',
   async () => {
   await mount()
-  expect(all('.dt-ticket-actions a').map(link => [link.textContent, link.getAttribute('href')])).toEqual([['去飞书回答',
-    'https://applink.feishu.cn/client/chat/open?openChatId=oc_1']])
+  expect(all('.dt-ticket-actions a').map(link => [link.textContent, link.getAttribute('href')])).toEqual([['去Mattermost回答',
+    'https://mattermost.test/_redirect/pl/proot000000000000000000000']])
   expect(all('.dt-ticket-note').map(note => note.textContent)).toContain('LlmError: no adapter registered for provider "provider-a"')
   await click(zh.retry)
   await click(zh.confirm)
@@ -135,12 +135,12 @@ it('shows the overview in English', async () => {
 it('lists the unavailable Evals one by one, without the health entry that counts them as a failure of dsh-superagent', async () => {
   server.health.evals = { state: 'error', detail: '1 Eval(s) unavailable in the last hour without a later judgement' }
   await mount()
-  expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
+  expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['Mattermost 来源异常', '评估未完成：这个文案好奇怪'])
   expect(text()).not.toContain(zh['health.evals'])
 })
 
 it('says when no Source is on, an Eval is past its deadline or a message keeps failing, each with the way to it', async () => {
-  for (const kind of ['feishu', 'github']) server.settings.sources[kind] = { ...server.settings.sources[kind]!, enabled: false }
+  for (const kind of ['mattermost', 'github']) server.settings.sources[kind] = { ...server.settings.sources[kind]!, enabled: false }
   server.threads = [threadSummary({ key: 'github:9', title: '#9 迟迟未决', stage: 'evaluating',
     evaluating: { id: 'v9', triggers: 1, strength: 'inferred', startedAt: '2026-08-31T23:58:00Z', deadline: '2026-09-01T00:00:00Z' } })]
   server.failing = [{ id: 'm1', channel: { source: 'github', thread: 'github:42', address: { number: '42' } },
@@ -148,7 +148,7 @@ it('says when no Source is on, an Eval is past its deadline or a message keeps f
     error: 'HTTP 502 from GitHub' }]
   await mount()
   const titles = () => all('.dt-cards .dt-att-what').map(item => item.textContent)
-  // The Feishu Source is off, so its error is no problem any more.
+  // The Mattermost Source is off, so its error is no problem any more.
   expect(titles()).toEqual([zh.problemNoSource, '评估超时未决定：#9 迟迟未决', '评估未完成：这个文案好奇怪', 'GitHub 回复发送失败（已重试 4 次）'])
   expect(text()).toContain('HTTP 502 from GitHub')
   await click(zh.actionOpenSources)
