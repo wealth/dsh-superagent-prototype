@@ -6,19 +6,20 @@ import { SettingsConflict } from '../src/app/settings.ts'
 import { startRuntime, type Host } from './fixtures/host.ts'
 
 /** Members the fake Mattermost channel answers with; a test sets `members.next` to `Error`s or lists to change the next read. */
-const members = { reply: vi.fn<() => Promise<{ members: { user_id: string; delete_at: number }[]; users: { id: string; username: string }[] }>>() }
+type MemberRead = { members: { user_id: string; delete_at: number }[]; users: { id: string; username: string }[] }
+const members = { reply: vi.fn<() => Promise<MemberRead>>() }
 /** Makes the next member read answer `users`, as Mattermost does: the channel's members, then the users' names. */
 function answerMembers(users: { id: string; username: string }[]) {
   members.reply.mockImplementationOnce(async () => ({ members: users.map(user => ({ user_id: user.id, delete_at: 0 })), users }))
 }
 /** The sync reads the member list first and the users' names second; one read of `members.reply` serves both. */
-let lastRead: { members: { user_id: string; delete_at: number }[]; users: { id: string; username: string }[] } | undefined
+let lastRead: MemberRead | undefined
 /** Installs the member stub after the stand starts, since the stand stubs `fetch` itself. */
 function stubMembers() {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const path = new URL(url).pathname
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
-    if (path.endsWith('/members')) { lastRead = await members.reply(); return json(lastRead.members) }
+    if (path.endsWith('/members')) { const read = await members.reply(); lastRead = read; return json(read.members) }
     if (path === '/api/v4/users/ids') return json(lastRead?.users ?? [])
     return new Response('{}', { status: 404 })
   }))
@@ -66,7 +67,7 @@ it('refuses a Policy sync that a Policy save outran, reports it on sync:mattermo
   h = await startRuntime()
   stubMembers()
   const { settings, store } = h.runtime
-  const reading = deferred<unknown>()
+  const reading = deferred<MemberRead>()
   members.reply.mockImplementationOnce(() => reading.promise)
   const syncing = settings.sync('mattermost')
   const policy = store.settings().policy

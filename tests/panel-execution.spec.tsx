@@ -9,8 +9,8 @@ import { MEMBER, server, ticketSummary, threadSummary } from './fixtures/panel-s
 usePanel()
 it('lists Tickets under Execution by who they wait on, with the Executor state and its pause as an action', async () => {
   server.tickets.open = [ticketSummary(), ticketSummary({ id: 't2', title: '执行中的工单', threads: [{ key: 'github:7',
-    source: 'github', title: '#7 x', facts: { number: { value: '#7' }, autoMerge: { label: { zh: '自动合并', en: 'Auto-merge' },
-      value: { zh: '已开启', en: 'on' } } } }] })]
+    source: 'github', title: '#7 x', facts: { number: { value: '#7' }, autoMerge: { label: { zh: '自动合并', en: 'Auto-merge', ru: 'Автослияние' },
+      value: { zh: '已开启', en: 'on', ru: 'включено' } } } }] })]
   await mount()
   await click(zh['tab.execution'])
   expect(document.querySelector('.dt-status-title')?.textContent).toBe(zh.statusTitle)
@@ -66,7 +66,7 @@ it('shows a Ticket with its stage, its Mandate details with the Trigger and Deci
     'Alice：顺便改标题']) expect(text()).toContain(expected)
   expect(all('.dt-chip').map(chip => chip.textContent)).toContain('Mattermost团队频道')
   await click(zh['term.channel'])
-  expect(all('.dt-disclosure-body a').map(link => [link.textContent, link.getAttribute('href')])).toEqual([['Mattermost消息',
+  expect(all('.dt-disclosure-body a').map(link => [link.textContent, link.getAttribute('href')])).toEqual([['Mattermost 消息',
     'https://mattermost.test/_redirect/pl/proot000000000000000000000'], ['GitHub #42', 'https://github.com/acme/widgets/issues/42']])
   await click(zh['term.environment'])
   expect(all('.dt-disclosure-body .dt-table tr').map(row => row.textContent)).toEqual(['DSH_SUPERAGENT_DIR/w/t1',
@@ -179,8 +179,8 @@ it('gives a Ticket a bot\'s message started its basis, marks a Thread it follows
   basis: { facts: [{ name: 'sender', value: '评审机器人' }, { name: 'bot' }, { name: 'mode', value: 'auto' }], legacy: false },
   threads: [threadSummary(), { ...threadSummary({ key: 'github:7', title: '#7 相关 Issue' }), context: true }],
   inputs: [{ id: 'i1', kind: 'trigger', triggerId: 'e2', at: '2026-09-22T00:03:00Z', delivered: true, trigger: { id: 'e2',
-    actor: { source: 'feishu', id: MEMBER, name: { zh: 'Alice', en: 'Alice' } }, human: true, preview: '顺便加一个页面',
-    thread: 'feishu:oc_1:om_root', handback: { reason: 'Asks for a new page', at: '2026-09-22T00:05:00Z' } } }] }
+    actor: { source: 'mattermost', id: MEMBER, name: { zh: 'Alice', en: 'Alice', ru: 'Alice' } }, human: true, preview: '顺便加一个页面',
+    thread: 'mattermost:cteam000000000000000000000:proot000000000000000000000', handback: { reason: 'Asks for a new page', at: '2026-09-22T00:05:00Z' } } }] }
   at({ page: 'execution', id: 't1' })
   await mount()
   const facts = () => all('.dt-kv > div').map(row => [row.querySelector('dt')?.textContent, row.querySelector('dd')?.textContent])

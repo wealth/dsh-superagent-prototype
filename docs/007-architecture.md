@@ -367,13 +367,12 @@ Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsub
 | `src/sources/github-pull.ts` | Правила pull request'ов: за какими pull request'ами следует Тикет (`claimPull`, `observePull`), закрытия, которые он сообщает Engine, и `pullEndNotices`, уведомление в чат о Тикете, завершившемся merged или closed |
 | `src/sources/github-channel.ts` | Канал GitHub: комментарии и ответы в треде ревью, `sent` или `gone` |
 | `src/sources/github-read.ts` | Снимки CI, чтения репозитория, ресурсы `github/` и `githubThreadContext`: беседа Issue или pull request'а по страницам |
-| `src/sources/feishu.ts` | Вид Feishu и точка входа плагина, экспортируемая как `./feishu-watch` |
-| `src/sources/feishu-trigger.ts` | Сообщения Feishu как Триггеры, по одному правилу для живых событий, страниц истории и страниц тем |
-| `src/sources/feishu-loops.ts` | Циклы Feishu: потребитель событий, восстановление истории, имена чатов и опрос подписанных тем |
-| `src/sources/feishu-channel.ts` | Канал Feishu: ответы в теме, `sent` или `gone` |
-| `src/sources/feishu-read.ts` | Чтения `feishu/` сообщения Триггера, его корня, родителя и темы, и `feishuThreadContext`, который даёт их оценкам с их изображениями |
+| `src/sources/mattermost.ts` | Вид Mattermost и точка входа плагина, экспортируемая как `./mattermost-watch` |
+| `src/sources/mattermost-trigger.ts` | Сообщения Mattermost как Триггеры, по одному правилу для событий WebSocket и прочитанных постов |
+| `src/sources/mattermost-loops.ts` | Циклы Mattermost: потребитель событий WebSocket, имена каналов и опрос подписанных тредов |
+| `src/sources/mattermost-channel.ts` | Канал Mattermost: ответы в треде через REST, `sent` или `gone` |
+| `src/sources/mattermost-read.ts` | Чтения `mattermost/` поста Триггера, его корня и треда, и `mattermostThreadContext`, который даёт их оценкам |
 | `src/sources/admission-context.ts` | Ограниченное окно, из которого начинается оценка: первые страницы Треда Триггера, читаемые через его вид, и сообщения вокруг Триггера |
-| `src/sources/feishu-image.ts` | Читает изображение сообщения Feishu как вложение для оценивающей Сессии |
 | `src/client/index.tsx` | Точка входа клиентского плагина: запись в боковой панели, основная панель и страница в Plugin Manager DeepSeek Harness |
 | `src/client/app.tsx` | Панель: шапка, поиск, глоссарий, вкладки и страница текущего маршрута |
 | `src/client/provider.tsx` | Что каждая страница читает от своего хоста: текст, вызовы, навигацию, уведомления, опрос состояния и `restart`, который быстро читает состояние, пока dsh-superagent перезапускается |
@@ -397,7 +396,7 @@ Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsub
 | `src/client/locales.ts` | Весь текст на обоих языках и глоссарий [001 Domain model](001-domain.md) |
 | `src/client/client.css`, `css.d.ts` | Таблица стилей панели, загружаемая как текст |
 
-`src/sources/github.ts` и `src/sources/feishu.ts` также являются точками входа двух плагинов Источников, собираемыми через `tsdown.config.ts` и экспортируемыми в `package.json` как `./github-watch` и `./feishu-watch`. `cordis.patch.yml` бандла вставляет три плагина, с Feishu отключённым.
+`src/sources/github.ts` и `src/sources/mattermost.ts` также являются точками входа двух плагинов Источников, собираемыми через `tsdown.config.ts` и экспортируемыми в `package.json` как `./github-watch` и `./mattermost-watch`. `cordis.patch.yml` бандла вставляет три плагина, с Mattermost отключённым.
 
 ## Tests
 
@@ -409,8 +408,8 @@ Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsub
 | `tests/registry.spec.ts` | `SourceRegistry`: экземпляры, проверка, части Политики, Каналы и контекст Треда |
 | `tests/sources.spec.ts` | Источники Feishu и GitHub на `SourceContext`: трансляция, опросы и позиции чтения, правила pull request'ов, здоровье |
 | `tests/commands.spec.ts` | Вызовы CLI как аккаунты развёртывания, ответы Каналов и вызовы GitHub с ограничением по репозиторию |
-| `tests/feishu-read.spec.ts`, `tests/github-read.spec.ts` | Чтения Feishu и GitHub |
-| `tests/admission-context.spec.ts`, `tests/feishu-image.spec.ts` | Окно Треда оценок и чтения изображений Feishu |
+| `tests/github-read.spec.ts` | Чтения GitHub |
+| `tests/admission-context.spec.ts` | Окно Треда оценок |
 | `tests/assessment.spec.ts` | Что MasterAssessor хранит на Оценку и когда отпускает |
 | `tests/background.spec.ts` | Ожидание заданий оболочки и субагентов воркера: конец, который его пробудил, и хост, который останавливается |
 | `tests/bundle-patch.spec.ts` | Патч бандла, читаемый так, как его читает DeepSeek Harness, и пресет агента Сессий Исполнителей, который он определяет |

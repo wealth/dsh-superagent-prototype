@@ -38,7 +38,7 @@ it('re-evaluates or dismisses an unjudged Eval from the problem list', async () 
 it('opens the Thread of an unjudged Eval at its Trigger from the problem list', async () => {
   await mount()
   await click('评估未完成：这个文案好奇怪')
-  expect(server.requests.some(request => request.path.startsWith('threads/feishu:oc_1:om_root'))).toBe(true)
+  expect(server.requests.some(request => request.path.startsWith('threads/mattermost:cteam000000000000000000000:proot000000000000000000000'))).toBe(true)
   expect(document.querySelector('.dt-highlight')?.textContent).toContain('message e3')
 })
 
@@ -97,8 +97,8 @@ it('offers the step that fixes a settings problem as a button on the overview', 
 it('counts the messages not sent in the last day, linking to the Source status, and shows nothing when there are none', async () => {
   await mount()
   expect(all('.dt-stat-label').map(label => label.textContent)).not.toContain(zh.flowDroppedLabel)
-  server.dropped = [droppedReply('m2', 1, 'feishu', 'channelGone'), droppedReply('m1', 2, 'github', 'channelIgnored'), droppedReply('m0',
-    30, 'feishu', 'channelGone')]
+  server.dropped = [droppedReply('m2', 1, 'mattermost', 'channelGone'), droppedReply('m1', 2, 'github', 'channelIgnored'), droppedReply('m0',
+    30, 'mattermost', 'channelGone')]
   await remount()
   const stat = all('.dt-stat').find(item => item.querySelector('.dt-stat-label')?.textContent === zh.flowDroppedLabel)!
   expect(stat.textContent).toBe(`${zh.flowDroppedLabel}2`)

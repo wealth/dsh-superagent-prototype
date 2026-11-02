@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { admissionContext, threadWindow } from '../src/sources/admission-context.ts'
 import { Commands } from '../src/infra/commands.ts'
-import { feishuKind } from '../src/sources/feishu.ts'
+import { mattermostKind } from '../src/sources/mattermost.ts'
 import type { ContextMessage } from '../src/sources/kind.ts'
 import { SourceRegistry } from '../src/sources/registry.ts'
 import { SettingsSchema } from '../src/policy.ts'
@@ -24,30 +24,50 @@ it('deduplicates overlapping windows and reports an absent source without invent
   expect(threadWindow(messages, 'om_absent')).toMatchObject({ source_found: false, loaded_messages: 12, omitted_after: 7 })
 })
 it('retains pagination limits and exact loaded counts rather than claiming complete history', async () => {
-  const commands = new Commands(() => testDeployment(), {}, new AbortController().signal)
-  const lark = vi.spyOn(commands, 'lark').mockResolvedValueOnce({ items: [{ message_id: 'om_9', chat_id: 'oc_chat', thread_id: 'omt_thread' }] })
-    .mockResolvedValueOnce({ thread_id: 'omt_thread', messages: [listed(0), listed(1)], has_more: true, page_token: 'next' })
-  const trigger: Trigger = { id: 'event', source: 'feishu', threads: [{ source: 'feishu', id: 'oc_chat:om_9' }], actor: { source: 'feishu', id: 'ou_user' }, human: true, text: 'Trigger', at: '', meta: { chatId: 'oc_chat', messageId: 'om_9', direct: false, mentioned: false } }
-  const sources = new SourceRegistry(() => SettingsSchema.parse({ sources: { feishu: { enabled: true, config: { readPageSize: 2 } } } }))
-  sources.register(feishuKind)
-  const result = await admissionContext(sources.threadContext(trigger)!, commands, 1)
-  expect(result).toMatchObject({ complete: false, next: 'next', window: { loaded_messages: 2, source_found: false } })
-  expect(lark).toHaveBeenCalledTimes(2)
-  expect(lark.mock.calls[1]![0]).toEqual(expect.arrayContaining(['--page-size', '2']))
+  const bot = testDeployment().mattermost!
+  const post = (n: number) => ({ id: `p${n}`, channel_id: 'c1000000000000000000000000', user_id: 'u1000000000000000000000001',
+    message: `Message ${n}`, create_at: 1757376000000 + n * 1000, root_id: 'proot0000000000000000000001', delete_at: 0, type: '' })
+  const ids = ['p9', 'p8']
+  const fetch = vi.fn(async (url: string) => {
+    const path = new URL(url).pathname
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (path === '/api/v4/posts/proot0000000000000000000001/thread') return json({ order: ids, posts: { p9: post(9), p8: post(8) } })
+    if (path === '/api/v4/users/ids') return json([{ id: 'u1000000000000000000000001', username: 'alice' }])
+    return new Response('{}', { status: 404 })
+  })
+  vi.stubGlobal('fetch', fetch)
+  const trigger: Trigger = { id: 'event', source: 'mattermost', threads: [{ source: 'mattermost', id: 'c1000000000000000000000000:proot0000000000000000000001' }],
+    actor: { source: 'mattermost', id: 'u1000000000000000000000001' }, human: true, text: 'Trigger', at: '', channel: undefined as never,
+    meta: { channelId: 'c1000000000000000000000000', postId: 'p9', direct: false, mentioned: false, rootId: 'proot0000000000000000000001' } }
+  const sources = new SourceRegistry(() => SettingsSchema.parse({ sources: { mattermost: { enabled: true, config: { readPageSize: 2 } } } }))
+  sources.register(mattermostKind)
+  const result = await admissionContext(sources.threadContext(trigger)!, new Commands(() => testDeployment(), {}, new AbortController().signal), 1)
+  expect(result).toMatchObject({ complete: false, window: { loaded_messages: 2, source_found: true } })
+  // The next page continues from the oldest post of the loaded page.
+  expect(result.next).toBe('p8')
+  expect(fetch).toHaveBeenCalledTimes(2)
+  vi.unstubAllGlobals()
 })
-it('gives a message outside a topic the five chat messages before it, and says it read the chat', async () => {
-  const commands = new Commands(() => testDeployment(), {}, new AbortController().signal)
-  const at = Date.parse('2026-09-11T12:00:00Z')
-  const item = (n: number) => ({ message_id: `om_${n}`, chat_id: 'oc_chat', create_time: String(at + n * 1000), sender: { id: 'ou_user', sender_type: 'user' },
-    body: { content: JSON.stringify({ text: `message ${n}` }) } })
-  const lark = vi.spyOn(commands, 'lark').mockResolvedValueOnce({ items: [{ message_id: 'om_0', chat_id: 'oc_chat' }] })
-    .mockResolvedValueOnce({ items: [0, -1, -2, -3, -4, -5].map(item), has_more: true, page_token: 'older' })
-  const trigger: Trigger = { id: 'event', source: 'feishu', threads: [{ source: 'feishu', id: 'oc_chat:om_0' }], actor: { source: 'feishu', id: 'ou_user' },
-    human: true, text: 'message 0', at: new Date(at).toISOString(), meta: { chatId: 'oc_chat', messageId: 'om_0', direct: false, mentioned: false } }
+it('reads the root post as the whole context when the trigger names no separate thread', async () => {
+  const bot = testDeployment().mattermost!
+  const root = { id: 'p0', channel_id: 'c1000000000000000000000000', user_id: 'u1000000000000000000000001',
+    message: 'message 0', create_at: 1757376000000, root_id: '', delete_at: 0, type: '' }
+  const fetch = vi.fn(async (url: string) => {
+    const path = new URL(url).pathname
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (path === '/api/v4/posts/p0/thread') return json({ order: ['p0'], posts: { p0: root } })
+    if (path === '/api/v4/posts/p0') return json(root)
+    if (path === '/api/v4/users/ids') return json([{ id: 'u1000000000000000000000001', username: 'alice' }])
+    return new Response('{}', { status: 404 })
+  })
+  vi.stubGlobal('fetch', fetch)
+  const trigger: Trigger = { id: 'event', source: 'mattermost', threads: [{ source: 'mattermost', id: 'c1000000000000000000000000:p0' }],
+    actor: { source: 'mattermost', id: 'u1000000000000000000000001' }, human: true, text: 'message 0', at: new Date(1757376000000).toISOString(),
+    channel: undefined as never, meta: { channelId: 'c1000000000000000000000000', postId: 'p0', direct: false, mentioned: false } }
   const sources = new SourceRegistry(() => SettingsSchema.parse({}))
-  sources.register(feishuKind)
-  const result = await admissionContext(sources.threadContext(trigger)!, commands, 3)
-  expect(result).toMatchObject({ status: 'chat_neighbours', complete: true, window: { source_found: true, loaded_messages: 6 } })
-  expect(result.messages.map(message => message.id)).toEqual([-5, -4, -3, -2, -1, 0].map(n => `om_${n}`))
-  expect(lark).toHaveBeenCalledTimes(2)
+  sources.register(mattermostKind)
+  const result = await admissionContext(sources.threadContext(trigger)!, new Commands(() => testDeployment(), {}, new AbortController().signal), 3)
+  expect(result).toMatchObject({ complete: true, window: { source_found: true, loaded_messages: 1 } })
+  expect(result.messages.map(message => message.id)).toEqual(['p0'])
+  vi.unstubAllGlobals()
 })

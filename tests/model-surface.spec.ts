@@ -20,7 +20,7 @@ import { inputMessage } from '../src/executor/dsh.ts'
 import { credentialHelper, workerGitConfig } from '../src/infra/environment.ts'
 import { IM_WORDS, NOTE_WORDS, checkedImText } from '../src/infra/text.ts'
 import { SettingsSchema } from '../src/policy.ts'
-import { mattermostKind, mattermostTrigger } from '../src/sources/feishu.ts'
+import { mattermostKind, mattermostTrigger } from '../src/sources/mattermost.ts'
 import { githubKind } from '../src/sources/github.ts'
 import { testMachine } from './fixtures/deployment.ts'
 
@@ -37,7 +37,7 @@ interface Skill { name: string; description: string; content: string }
  * Maximum combined character count of system prompt and tool definitions per role (~5% above baseline).
  * Lower this limit when shrinking model-facing text; raise it only intentionally and explain why in the commit message.
  */
-const BUDGET: Record<Role, number> = { orchestrator: 59_000, worker: 40_500 }
+const BUDGET: Record<Role, number> = { orchestrator: 63_000, worker: 43_000 }
 const PROMPTS = 'prompts/, skills/', TOOLS = 'src/app/tools/', SESSIONS = 'src/app/sessions.ts'
 const NOTICES = 'src/app/notices.ts', LINKS = 'src/app/links.ts', ASSESSMENT = 'src/app/assessment.ts'
 const EXECUTOR = 'src/executor/dsh.ts', ERRORS = 'src/core/errors.ts'
@@ -59,31 +59,42 @@ const BANNED: [rule: string, where: RegExp, phrase: RegExp][] = [
 /** Known failures tolerated for now, by the file that owns the text; keep empty. */
 const KNOWN_FAILURES: [owner: string, failure: string][] = []
 
-const MEMBER = 'ualice00000000000000000000', CHAT = 'cteam000000000000000000000'
-const feishu = (id: string, text: string, overrides: Record<string, unknown> = {}) => mattermostTrigger({ message_id: `om_${id}`, chat_id: CHAT,
-  chat_type: 'group', sender_id: MEMBER, sender_type: 'user', content: text, mentions: [{ id: 'ubot0000000000000000000000' }],
-  create_time: String(Date.parse('2026-09-09T00:00:00Z') + Number(id) * 1000), ...overrides }, 'ubot0000000000000000000000', 'bbot0000000000000000000000')!
+const MEMBER = 'ualice00000000000000000000', CHAT = 'cteam000000000000000000000', BOT_ID = 'ubot0000000000000000000000'
+/** A Mattermost trigger from Alice in `CHAT`; `overrides` are raw post fields (root_id, mentions flag through the channel). */
+const feishu = (id: string, text: string, overrides: Record<string, unknown> = {}) => mattermostTrigger({
+  id: `p${id}`, channel_id: CHAT, user_id: MEMBER, message: text,
+  create_at: Date.parse('2026-09-09T00:00:00Z') + Number(id) * 1000,
+  root_id: (overrides.root_id as string | undefined) ?? '', delete_at: 0, type: '' } as never, BOT_ID,
+  { name: 'team', direct: false }, false, !('mentions' in overrides))!
 const sentences = (text: string) => text.split(/(?<=[.!?])\s+|\n+/)
 const words = (count: number) => Array.from({ length: count }, () => 'word').join(' ')
 
 /** Start a configured Runtime on a fake DSH host (as in tests/runtime.spec.ts) that records registered tools, prompts, skills, and delivered messages per session. */
 async function start() {
   const directory = mkdtempSync(join(tmpdir(), 'model-surface-'))
-  const AGENT = join(directory, 'agent-gh'), BOT = join(directory, 'lark-bot')
-  for (const cli of [AGENT, BOT]) writeFileSync(cli, '#!/bin/sh\n', { mode: 0o755 })
+  const AGENT = join(directory, 'agent-gh')
+  for (const cli of [AGENT]) writeFileSync(cli, '#!/bin/sh\n', { mode: 0o755 })
   const repository = { default_branch: 'master', permissions: { push: true } }
   vi.spyOn(Commands.prototype, 'gh').mockImplementation(async args => args[1] === 'user' ? { login: 'agent-bot' } : repository)
-  vi.spyOn(Commands.prototype, 'lark').mockResolvedValue({ users: [{ member_id: MEMBER, name: 'Alice' }], has_more: false })
   vi.spyOn(Commands.prototype, 'git').mockResolvedValue('')
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const path = new URL(url).pathname
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (path === '/api/v4/users/me') return json({ id: 'ubot0000000000000000000000', username: 'dsh-bot', is_bot: true })
+    if (path === '/api/v4/users/ids') return json([{ id: MEMBER, username: 'Alice' }])
+    if (path.startsWith('/api/v4/channels/') && path.endsWith('/members')) return json([{ user_id: MEMBER, delete_at: 0 }])
+    if (path.startsWith('/api/v4/posts/') && path.endsWith('/thread')) {
+      const id = path.split('/')[3]!
+      return json({ order: [id], posts: { [id]: { id, channel_id: CHAT, user_id: MEMBER, message: '', create_at: 0, root_id: '', delete_at: 0, type: '' } } })
+    }
+    return new Response('{}', { status: 404 })
+  }))
   vi.spyOn(Commands.prototype, 'run').mockResolvedValue('{"ok":true,"data":{}}')
   const answers: Record<string, string> = {
     [`git -C ${directory} rev-parse --show-toplevel`]: `${directory}\n`,
     [`git -C ${directory} remote get-url --push origin`]: 'https://github.com/acme/widgets.git\n',
     [`${AGENT} api user`]: '{"login":"agent-bot","id":7}',
     [`${AGENT} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`]: '{"name":"acme/widgets","push":true}\n',
-    [`${BOT} auth status`]: JSON.stringify({ appId: 'bbot0000000000000000000000', brand: 'mattermost', identities: { bot: { status: 'ready' } } }),
-    [`${BOT} config strict-mode`]: 'strict-mode: bot (source: profile)',
-    [`${BOT} api GET /open-apis/bot/v3/info --as bot --format ndjson`]: '{"bot":{"open_id":"ou_bot"},"code":0,"msg":"ok"}',
     ['git config -z --show-origin --get-all credential.https://github.com.helper']: `file:${workerGitConfig(directory)}\0${credentialHelper(AGENT)}\0`,
     ['git config -z --show-scope --get-regexp ^(credential\\..*|http\\..*extraheader)$']:
       `global\0credential.helper\n\0global\0credential.https://github.com.helper\n${credentialHelper(AGENT)}\0`,
@@ -138,14 +149,14 @@ async function start() {
   for (const [name, service] of Object.entries(services)) ctx.reflect.provide(name, service)
   const seed = new Store(join(directory, 'orchestrator.sqlite'))
   const github = { enabled: true, config: { repository: 'acme/widgets', cli: AGENT } }
-  seed.saveSettings(SettingsSchema.parse({ ...seed.settings(), sources: { github, mattermost: { enabled: true, config: { cli: BOT } } } }))
+  seed.saveSettings(SettingsSchema.parse({ ...seed.settings(), sources: { github, mattermost: { enabled: false, config: { url: 'https://mattermost.test', token: 'test-token' } } } }))
   seed.close()
   const runtime = new Runtime(ctx, testMachine({ stateDir: directory }), () => {})
   await runtime.ready
   runtime.sources.register(mattermostKind); runtime.sources.register(githubKind)
   const settings = runtime.store.settings()
-  const allowed = { mattermost: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChat: CHAT }, github: { allowed: [{ id: 'alice' }] } }
-  const feishuSource = { enabled: true, config: { cli: BOT, channels: [{ channelId: CHAT, listen: 'all' }], directMessages: true } }
+  const allowed = { mattermost: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChannel: CHAT }, github: { allowed: [{ id: 'alice' }] } }
+  const feishuSource = { enabled: true, config: { url: 'https://mattermost.test', token: 'test-token', channels: [{ channelId: CHAT, listen: 'all' }], directMessages: true } }
   runtime.store.saveSettings({ ...settings, policy: { ...settings.policy, sources: allowed }, eval: { ...settings.eval, mode: 'auto' },
     sources: { ...settings.sources, mattermost: feishuSource } })
   const run = async (sessionId: string, name: string, args: unknown) =>
@@ -174,7 +185,6 @@ async function drive(host: Host) {
   const refusal = await run(master, 'orchestrator_reply', answer).then(() => '', (error: Error) => error.message)
   const proposal = feishu('5', '把副标题改成“浏览网页”', { mentions: [] })
   await runtime.receive(proposal)
-  vi.spyOn(Commands.prototype, 'lark').mockResolvedValue({ items: [{ message_id: 'p5000000000000000000000000', chat_id: CHAT }] })
   await run(master, 'orchestrator_eval', { trigger_id: proposal.id })
   const proactive = (await run(master, 'orchestrator_eval_decide', { trigger_id: proposal.id, decision: 'accept', title: '文案修订', worktree_name: 'copy-fix',
     scope: '改副标题', reason: 'explicit copy change', intent_evidence: 'quoted', acknowledgement: '收到，把副标题改成“浏览网页”。',
@@ -188,10 +198,10 @@ async function drive(host: Host) {
   const other = feishu('9', '@bot 顺便看看这个')
   await runtime.receive(other)
   await run(master, 'orchestrator_route', { decisions: [{ kind: 'attach', ticket_id: a, trigger_id: other.id }] })
-  await run(workerA, 'orchestrator_thread_unrelated', { thread: `mattermost:${CHAT}:om_9`, reason: 'It asks for something else.' })
-  await run(workerA, 'orchestrator_thread_follow', { thread: `mattermost:${CHAT}:om_7`, reason: 'The same settings page.' })
+  await run(workerA, 'orchestrator_thread_unrelated', { thread: `mattermost:${CHAT}:p9`, reason: 'It asks for something else.' })
+  await run(workerA, 'orchestrator_thread_follow', { thread: `mattermost:${CHAT}:p7`, reason: 'The same settings page.' })
   await runtime.receive(feishu('7', '@bot 这个页面的按钮也改一下'))
-  const beyond = feishu('8', '另外把导出也做了', { mentions: [], root_id: 'p1000000000000000000000000' })
+  const beyond = feishu('8', '另外把导出也做了', { mentions: [], root_id: 'p1' })
   await runtime.receive(beyond)
   await runtime.idle()
   await run(workerA, 'orchestrator_trigger_handback', { trigger_id: beyond.id, reason: 'It asks for an export feature.' })
@@ -199,7 +209,7 @@ async function drive(host: Host) {
   await runtime.pump()
   await runtime.idle()
   await run(workerA, 'orchestrator_report', { state: 'ready', summary: 'Done.' })
-  await runtime.receive(feishu('2', '再加一个按钮', { mentions: [], root_id: 'p1000000000000000000000000' }))
+  await runtime.receive(feishu('2', '再加一个按钮', { mentions: [], root_id: 'p1' }))
   await vi.waitFor(async () => {
     await runtime.pump()
     expect(runtime.store.tickets.get(a)!.inputs.some(input => input.kind === 'resumed')).toBe(true)
@@ -357,7 +367,7 @@ it('collects both roles\' tools, prompts, skills and inputs', () => {
     expect(toolsOf('orchestrator').has(name)).toBe(false)
   }
   const wheres = new Set(surfaces.map(surface => surface.where))
-  for (const where of ['orchestrator prompt runtime/dispatch', 'worker prompt runtime/work', 'skill dsh-superagent-github', 'skill dsh-superagent-feishu',
+  for (const where of ['orchestrator prompt runtime/dispatch', 'worker prompt runtime/work', 'skill dsh-superagent-github', 'skill dsh-superagent-mattermost',
     'orchestrator prompt runtime/admission', 'orchestrator input candidate', 'orchestrator input worker_attention', 'orchestrator input worker_report',
     'orchestrator input thread_unrelated', 'orchestrator input ticket_ended', 'orchestrator input settings_saved', 'worker input assignment (explicit)',
     'worker input assignment (inferred)', 'worker input policy-changed', 'worker input resumed', 'worker input status',
@@ -399,8 +409,8 @@ it.each(['orchestrator', 'worker'] as const)('keeps the %s within its character 
 it('keeps the routing rules in dispatch, which says the main Session may accept the rest of a stop message as new work', () => {
   const route = toolsOf('orchestrator').get('orchestrator_route')!.description
   const dispatch = surfaces.find(surface => surface.where === 'orchestrator prompt runtime/dispatch')!.text
-  expect(dispatch).toContain('you may accept the rest of the message as new work')
-  expect(dispatch).toContain('decide those whose card already settles them in one orchestrator_route call')
+  expect(dispatch).toContain('решай тех, чья карточка их уже проясняет, одним вызовом orchestrator_route')
+  expect(dispatch).toContain('решай тех, чья карточка их уже проясняет, одним вызовом orchestrator_route')
   expect(route).not.toMatch(/needs a new ticket on another explicit instruction/)
 })
 

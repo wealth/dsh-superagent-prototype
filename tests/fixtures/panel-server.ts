@@ -32,7 +32,7 @@ export function actor(source: string, id: string, human = true): Actor {
   const entry = ALLOWED[source]?.find(item => item.id.toLowerCase() === id.toLowerCase())
   const unnamed = source === 'mattermost' ? mattermostKind.policy?.unnamed : undefined
   const name = entry ? entry.name || entry.id : unnamed ? undefined : id
-  return { source, id, name: name ? { zh: name, en: name } : human ? unnamed!.person : unnamed!.bot }
+  return { source, id, name: name ? { zh: name, en: name, ru: name } : human ? unnamed!.person : unnamed!.bot }
 }
 type TicketFields = Omit<TicketRow, 'stage' | 'action'>
 const TICKET = {
@@ -40,14 +40,14 @@ const TICKET = {
   attention: undefined, assignments: 1, inputs: 2, undelivered: 0, deliveryError: undefined, sessionId: 'worker-t1', directory: '/w/t1',
   summary: 'working on it', createdAt: '2026-09-22T00:00:00Z', updatedAt: '2026-09-23T00:00:00Z',
   threads: [{ key: 'github:42', source: 'github', title: '#42 Fix login', url: 'https://github.com/acme/widgets/pull/42',
-    facts: { number: { value: '#42' }, ci: { label: { zh: 'CI 失败', en: 'CI failed' }, value: '1', problem: true } } }],
+    facts: { number: { value: '#42' }, ci: { label: { zh: 'CI 失败', en: 'CI failed', ru: 'CI провален' }, value: '1', problem: true } } }],
 } satisfies TicketFields
 export const ticketSummary = (fields: Partial<TicketFields> = {}, stage: TicketStage = { stage: 'working' }): TicketRow =>
   ({ ...TICKET, ...fields, ...stage })
 export const threadSummary = (fields: Partial<ThreadRow> = {}): ThreadRow => ({
   key: 'mattermost:cteam000000000000000000000:proot000000000000000000000', source: 'mattermost', title: '这个文案好奇怪', stage: 'subscribed', latest: undefined, lastAt: '2026-09-23T00:00:00Z',
   createdAt: '2026-09-22T00:00:00Z', subscriptions: 1, tickets: [{ id: 't1', title: '修复回归', state: 'open' }], evaluating: undefined,
-  pending: 0, pollError: undefined, url: undefined, facts: { chat: { value: '团队群' } }, ...fields,
+  pending: 0, pollError: undefined, url: undefined, facts: { chat: { value: '团队频道' } }, ...fields,
 })
 type TriggerFields = Partial<Omit<TriggerRow, 'disposition' | 'actions'>> & { disposition?: Partial<TriggerRow['disposition']> }
 /** Build a trigger row on the default thread and compute `actions.requeue` using the host's eligibility rules. */
@@ -114,7 +114,7 @@ export let server: PanelServer
 function resolved() {
   const accounts = server.setup.accounts
   return accounts ? testDeployment({ repository: accounts.repository, github: { cli: '/bin/false', login: accounts.agent, noreply: '' },
-    ...accounts.mattermost ? { mattermost: { url: 'https://mattermost.test', token: 'test-token', ...accounts.mattermost } } : { mattermost: undefined } }) : undefined
+    ...accounts.mattermost ? { mattermost: { token: 'test-token', ...accounts.mattermost } } : { mattermost: undefined } }) : undefined
 }
 /** Default source health: paused during setup; Mattermost defaults to `socket closed` unless overridden or paused by setup. */
 function healthOf(name: string): Health {
@@ -171,10 +171,10 @@ const settingsView = (): ApiResponse<'GET settings'> => ({
   sources: sourceSettings(),
   environment: { root: '/srv/dsh-superagent/work', variables: [
     { owner: 'executor', enabled: true, variables: [{ key: 'DSH_SUPERAGENT_DIR', description: { zh: '工单的执行目录',
-      en: 'The ticket directory' } },
-      { key: 'DSH_SUPERAGENT_NAME', description: { zh: '工单短名', en: 'Short name' } }] },
+      en: 'The ticket directory', ru: 'Каталог тикета' } },
+      { key: 'DSH_SUPERAGENT_NAME', description: { zh: '工单短名', en: 'Short name', ru: 'Короткое имя' } }] },
     { owner: 'github', enabled: false, variables: [{ key: 'DSH_SUPERAGENT_GITHUB_REPOSITORY', description: { zh: '仓库',
-      en: 'Repository' } }] }] },
+      en: 'Repository', ru: 'Репозиторий' } }] }] },
 })
 const overviewView = (): ApiResponse<'GET overview'> => {
   const { problem, mattermostProblem } = server.setup
@@ -183,7 +183,7 @@ const overviewView = (): ApiResponse<'GET overview'> => {
     problems: [...setup ? [{ kind: 'setup' as const, ...setup }] : [],
       ...KINDS.some(kind => server.settings.sources[kind.kind]?.enabled !== false) ? [] : [{ kind: 'no-source' as const }],
       ...mattermostProblem || server.settings.sources.mattermost?.enabled === false ? [] : [{ kind: 'source-error' as const, source: { id: 'mattermost',
-        title: { zh: 'Mattermost', en: 'Mattermost' },
+        title: { zh: 'Mattermost', en: 'Mattermost', ru: 'Mattermost' },
         health: { name: 'mattermost', state: 'error' as const, detail: 'socket closed' } } }],
       ...server.threads.filter(thread => thread.evaluating && thread.evaluating.deadline < new Date().toISOString())
         .map(thread => ({ kind: 'eval-overdue' as const, thread })),
@@ -209,11 +209,11 @@ const ticketDetail = (): TicketPageView => ({
   mandate: { strength: 'explicit', policyVersion: 'abcdef1234567890', basis: { via: 'addressed', sender: 'Alice', addressed: 'mention' },
     actor: actor('mattermost', MEMBER), scope: '修复登录页回归' },
   basis: { facts: [{ name: 'sender', value: 'Alice' }, { name: 'addressed', value: 'mention' }], legacy: false },
-  environment: [{ key: 'DSH_SUPERAGENT_DIR', value: '/w/t1', description: { zh: '执行目录', en: 'Directory' }, owner: 'executor' },
-    { key: 'DSH_SUPERAGENT_GITHUB_NUMBER', value: '', description: { zh: '编号', en: 'Number' }, owner: 'github' }],
+  environment: [{ key: 'DSH_SUPERAGENT_DIR', value: '/w/t1', description: { zh: '执行目录', en: 'Directory', ru: 'Каталог' }, owner: 'executor' },
+    { key: 'DSH_SUPERAGENT_GITHUB_NUMBER', value: '', description: { zh: '编号', en: 'Number', ru: 'Номер' }, owner: 'github' }],
   channels: [{ source: 'mattermost', url: 'https://mattermost.test/_redirect/pl/proot000000000000000000000', label: { zh: 'Mattermost 消息',
     en: 'Mattermost message', ru: 'Сообщение в Mattermost' } },
-    { source: 'github', url: 'https://github.com/acme/widgets/issues/42', label: { zh: 'GitHub #42', en: 'GitHub #42' } }],
+    { source: 'github', url: 'https://github.com/acme/widgets/issues/42', label: { zh: 'GitHub #42', en: 'GitHub #42', ru: 'GitHub #42' } }],
   assignments: [{ id: 'a1', state: 'running', createdAt: '2026-09-22T00:00:00Z',
     startedAt: '2026-09-22T00:01:00Z',
     report: { state: 'progress', summary: 'working', at: '2026-09-22T00:02:00Z' } }],
@@ -249,7 +249,7 @@ function initial(): PanelServer {
   return {
     health: {}, down: false, pending: 0, opened: [], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
     setup: { machine: MACHINE, problem: null, mattermostProblem: null,
-      accounts: { repository: 'acme/widgets', agent: 'agent-bot', mattermost: { botId: 'botuser0000000000000000001',
+      accounts: { repository: 'acme/widgets', agent: 'agent-bot', mattermost: { url: 'https://mattermost.test', botId: 'botuser0000000000000000001',
         username: 'dsh-bot' } } },
     settings, revisions: { policy: 3, eval: 1, executor: 0 },
     prompts: { masterId: 'master', sections: TEAM_SECTIONS, skillName: SKILL_NAME.source, builtin: ['mattermost', 'github'],

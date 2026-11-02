@@ -14,9 +14,9 @@ import { mattermostKind } from '../src/sources/mattermost.ts'
 import { githubKind } from '../src/sources/github.ts'
 
 const probe: SourceKind<{ interval: number }> = {
-  kind: 'probe', title: { zh: '探针', en: 'Probe' }, description: { zh: '', en: '' }, health: [],
+  kind: 'probe', title: { zh: '探针', en: 'Probe', ru: 'Проба' }, description: { zh: '', en: '', ru: '' }, health: [],
   schema: z.object({ interval: z.number().int().min(1).default(5) }).strict(),
-  fields: [{ key: 'interval', type: 'number', min: 1, max: 60, label: { zh: '间隔', en: 'Interval' } }],
+  fields: [{ key: 'interval', type: 'number', min: 1, max: 60, label: { zh: '间隔', en: 'Interval', ru: 'Интервал' } }],
 }
 
 describe('Source registry', () => {
@@ -44,7 +44,7 @@ describe('Source registry', () => {
     const read: unknown[] = []
     sources.register({ ...probe,
       channel: { send: async (_host, message) => { sent.push(message); return 'sent' },
-        link: address => ({ url: `https://probe/${address.room}`, label: { zh: '探针', en: 'Probe' } }) },
+        link: address => ({ url: `https://probe/${address.room}`, label: { zh: '探针', en: 'Probe', ru: 'Проба' } }) },
       threadContext: { messageId: trigger => String(trigger.meta.id), read: async (_commands, trigger, part, cursor, config) => {
         read.push([trigger.id, part, cursor, config.interval])
         return { messages: [{ id: 'm1', from: 'u', at: '1', text: '' }],
@@ -57,7 +57,7 @@ describe('Source registry', () => {
     expect(sent).toEqual([message('probe')])
     // A kind that is not installed keeps its replies waiting; links to it have no page.
     expect(await sources.send(message('retired'), commands)).toBe('waiting')
-    expect(sources.link(message('probe').channel, {})).toEqual({ url: 'https://probe/r', label: { zh: '探针', en: 'Probe' } })
+    expect(sources.link(message('probe').channel, {})).toEqual({ url: 'https://probe/r', label: { zh: '探针', en: 'Probe', ru: 'Проба' } })
     expect(sources.link(message('retired').channel, {})).toEqual({ url: '', label: { zh: 'retired', en: 'retired', ru: 'retired' } })
     const trigger = { id: 't1', source: 'probe', threads: [{ source: 'probe', id: '1' }], actor: { source: 'probe', id: 'u' }, human: true,
       at: '', text: 'hi', meta: { id: 'm1' } }
@@ -102,7 +102,7 @@ describe('Source registry', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
     sources.register(mattermostKind); sources.register(githubKind)
     const post = (overrides: Record<string, unknown> = {}) => mattermostTrigger({ id: 'p2', channel_id: 'c1000000000000000000000000', user_id: 'u1000000000000000000000001',
-      message: 'yes', create_at: 1757376000000, root_id: 'p1', type: '', ...overrides }, 'u2000000000000000000000001', { name: 'team', direct: false }, false, true)!
+      message: 'yes', create_at: 1757376000000, root_id: 'p1', type: '', delete_at: 0, ...overrides }, 'u2000000000000000000000001', { name: 'team', direct: false }, false, true)!
     expect(sources.repliesTo(post())).toBe(mattermostTriggerId('p1'))
     expect(sources.repliesTo(post({ root_id: '' }))).toBeUndefined()
     expect(sources.repliesTo({ ...post(), source: 'github' })).toBeUndefined()
@@ -150,12 +150,12 @@ describe('Source registry', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
     sources.register(mattermostKind)
     const trigger = mattermostTrigger({ id: 'pdm', channel_id: 'c1000000000000000000000000', user_id: 'u1000000000000000000000001',
-      message: 'fix it', create_at: 1757376000000, root_id: '', type: '' }, 'u2000000000000000000000001', { name: 'dm', direct: true }, false, true)!
+      message: 'fix it', create_at: 1757376000000, root_id: '', type: '', delete_at: 0 }, 'u2000000000000000000000001', { name: 'dm', direct: true }, false, true)!
     const channel = trigger.channel!
     expect(channel.address).toEqual({ channelId: 'c1000000000000000000000000', postId: 'pdm', direct: 'true' })
     expect(sources.channelAllowed(channel)).toBe(true)
     const commands = new Commands(() => testDeployment({ mattermost: { url: 'https://mattermost.test', token: 'test-token', botId: 'u2000000000000000000000001', username: 'dsh-bot' } }), {}, new AbortController().signal)
-    const fetched = vi.fn(async () => new Response(JSON.stringify({ id: 'reply' }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    const fetched = vi.fn<(url: string | URL, init?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({ id: 'reply' }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
     vi.stubGlobal('fetch', fetched)
     const reply: OutboundMessage = { id: 'reply-1', channel, text: 'Done', kind: 'reply' }
     expect(await sources.send(reply, commands)).toBe('sent')

@@ -5,16 +5,12 @@ import { Later } from '../src/app/effects.ts'
 import { reportRelay } from '../src/app/notices.ts'
 import { WorkerSlots, inputMessage, mandateInstructions, ticketExecution, transient, triggerMessage } from '../src/executor/dsh.ts'
 import { SettingsSchema } from '../src/policy.ts'
-import { Commands } from '../src/infra/commands.ts'
 import { deferred, waitUntil } from './fixtures/async.ts'
-import { CHAT, MEMBER, feishu, startRuntime, type Host } from './fixtures/host.ts'
+import { CHAT, feishu, startRuntime, type Host } from './fixtures/host.ts'
 
 let h: Host
 beforeEach(async () => { h = await startRuntime() })
 afterEach(async () => { await h.stop() })
-const lark = { users: [{ member_id: MEMBER, name: 'Alice' }], has_more: false }
-const linkLookedUp = (messageId: string) =>
-  vi.mocked(Commands.prototype.lark).mock.calls.some(([args]) => args.includes('+messages-mget') && args.includes(messageId))
 /** Hold the first resolution of a Session until `gate` resolves; `held()` says whether it began. */
 function holdSession(sessionId: string, gate: Promise<void>) {
   let held = false
@@ -28,24 +24,21 @@ const idle = (sessionId: string) => {
   h.ctx.emit('agent/status', { agent, status: 'idle' } as never)
 }
 
-it('evaluates a message that arrives on a thread while an earlier candidate\'s card waits for its link, in the thread\'s next Eval', async () => {
-  const gate = deferred()
-  // The first candidate's source link lookup is slow; Feishu allows it up to linkTimeoutMs.
-  vi.mocked(Commands.prototype.lark).mockImplementation(async args => { if (args.includes('+messages-mget') && args.includes('om_1')) await gate.promise; return lark })
+it('evaluates a message that arrives on a thread while an earlier candidate\'s card waits for routing, in the thread\'s next Eval', async () => {
+  // Mattermost cards carry the trigger's own permalink, so no link lookup delays a card; the thread still holds one Eval.
   await h.runtime.settings.pause(true, 'panel')
   const a1 = feishu('1', '@bot 修 A'), b1 = feishu('2', '@bot 修 B'), b2 = feishu('3', '@bot B 还有这个', { root_id: 'om_2' })
   h.runtime.receive(a1); h.runtime.receive(b1)
   await h.runtime.settings.pause(false, 'panel')
-  await waitUntil(() => linkLookedUp('om_1'))
+  await waitUntil(() => h.candidates().length >= 2)
   h.runtime.receive(b2)
-  gate.resolve(); await h.runtime.idle()
-  const threadB = `feishu:${CHAT}:om_2`
+  await h.runtime.idle()
+  const threadB = `mattermost:${CHAT}:post_2`
   expect(h.runtime.store.threads.get(threadB)).toMatchObject({ evaluating: { triggerIds: [b1.id] }, pending: [b2.id] })
   await h.route({ kind: 'ignore', trigger_id: b1.id, reason: 'duplicate' })
   await h.runtime.idle()
   expect(h.runtime.store.threads.get(threadB)).toMatchObject({ evaluating: { triggerIds: [b2.id] }, pending: [] })
-  // A slow link lookup holds only its own candidate's card.
-  expect(h.candidates()).toEqual([b1.id, a1.id, b2.id])
+  expect(h.candidates()).toEqual([a1.id, b1.id, b2.id])
 })
 
 it('delivers nothing to a ticket a person stopped while an earlier ticket\'s delivery waited', async () => {
@@ -834,7 +827,7 @@ it('resumes an ended ticket a person wrote to during a pause once it lifts, unde
   // A Mandate the Policy no longer holds when the pause lifts does not resume: its sender left the list meanwhile.
   await followUp('4', 'om_3')
   const settings = h.runtime.store.settings()
-  h.runtime.store.saveSettings({ ...settings, policy: { ...settings.policy, sources: { ...settings.policy.sources, feishu: { ...settings.policy.sources.feishu!, allowed: [] } } } })
+  h.runtime.store.saveSettings({ ...settings, policy: { ...settings.policy, sources: { ...settings.policy.sources, mattermost: { ...settings.policy.sources.mattermost!, allowed: [] } } } })
   await h.runtime.settings.pause(false, 'panel'); await pass()
   expect(h.runtime.store.tickets.get(second)).toMatchObject({ ended: expect.anything(), undelivered: [] })
 })

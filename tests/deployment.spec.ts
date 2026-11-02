@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Config, executable, machineOf, resolveDeployment, resolveFeishuBot, type Machine, type Probe } from '../src/deployment.ts'
+import { Config, executable, machineOf, resolveDeployment, resolveMattermostBot, type Machine, type Probe } from '../src/deployment.ts'
 import { gitEnv } from './fixtures/git.ts'
 
 const exec = promisify(execFile)
@@ -83,19 +83,21 @@ describe('setup', () => {
     await needs('github', 'agentCliNoAccount', {}, { repository, cli: program(join(dir, 'bin', 'gh-anonymous'), `echo '{}'`) })
     expect(() => executable('nothing-here', join(dir, 'bin'))).toThrow('nothing-here is not an executable file on PATH')
   })
-  it('reads the Feishu bot from a bot-only lark-cli, or finds none when the Feishu Source names no CLI', async () => {
-    expect(await resolveFeishuBot(machine(), {}, probe, path)).toBeUndefined()
-    expect(await resolveFeishuBot(machine(), { cli: 'lark-cli' }, probe, path)).toEqual({ cli: join(dir, 'bin', 'lark-cli'), appId: 'cli_bot', brand: 'lark', botId: 'ou_bot', name: 'Widgets Bot' })
-    const refuses = async (code: string, values: Record<string, unknown> = {}) => expect(resolveFeishuBot(machine(), { cli: 'lark-cli' }, probe, path)).rejects.toEqual(setupError('feishu', code, values))
-    program(join(dir, 'bin', 'lark-cli'), lark({ identities: { bot: { status: 'ready' } } }))
-    await refuses('feishuNoApp')
-    program(join(dir, 'bin', 'lark-cli'), lark({ appId: 'cli_bot', identities: { bot: { status: 'missing' } } }))
-    await refuses('feishuBotNotReady', { app: 'cli_bot', status: 'missing' })
-    program(join(dir, 'bin', 'lark-cli'), lark({ appId: 'cli_bot', identities: { bot: { status: 'ready' } } }, 'off'))
-    await refuses('feishuUserIdentity', { mode: 'off' })
-    program(join(dir, 'bin', 'lark-cli'), lark({ appId: 'cli_bot', identities: { bot: { status: 'ready' } } }, 'bot', { code: 0, data: {} }))
-    await refuses('feishuNoBot')
-    program(join(dir, 'bin', 'lark-cli'), 'echo "not configured" >&2; exit 1')
-    await refuses('feishuCliFailed', { output: expect.stringContaining('not configured') })
+  it('reads the Mattermost bot from the server the Source configures, or finds none when the Source names no server', async () => {
+    expect(await resolveMattermostBot(machine(), {})).toBeUndefined()
+    const respond = (status: number, body: object | string): typeof fetch => async (url, init) => {
+      expect(url).toBe('https://mattermost.test/api/v4/users/me')
+      expect(init?.headers).toEqual({ Authorization: 'Bearer bot-token' })
+      return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+    }
+    const bot = await resolveMattermostBot(machine(), { url: 'https://mattermost.test/', token: 'bot-token' },
+      respond(200, { id: 'botuser0000000000000000001', username: 'dsh-bot', is_bot: true }))
+    expect(bot).toEqual({ url: 'https://mattermost.test', token: 'bot-token', botId: 'botuser0000000000000000001', username: 'dsh-bot' })
+    const config = { url: 'https://mattermost.test', token: 'bot-token' }
+    const refuses = async (code: string, values: Record<string, unknown>, status: number, body: object | string) =>
+      expect(resolveMattermostBot(machine(), config, respond(status, body))).rejects.toEqual(setupError('mattermost', code, values))
+    await refuses('mattermostUnauthorized', {}, 401, '{"message":"token is invalid"}')
+    await refuses('mattermostUnreachable', { url: 'https://mattermost.test', output: 'HTTP 503' }, 503, 'boom')
+    await refuses('mattermostNoBot', {}, 200, '{"message":"no user"}')
   })
 })

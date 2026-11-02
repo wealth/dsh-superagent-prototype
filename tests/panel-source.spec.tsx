@@ -169,7 +169,7 @@ it('shows a failed Feishu bot check as a problem of the Feishu Source only, with
   expect(server.requests.some(request => request.path === 'setup/check')).toBe(true)
   await click(tab(zh['tab.source']))
   // The Source's state carries the problem once, not again as its health.
-  expect(all('.dt-form > .dt-list > .dt-row')[0]!.textContent?.match(/cli_bot 的机器人身份状态是 missing/g)).toHaveLength(1)
+  expect(all('.dt-form > .dt-list > .dt-row')[0]!.textContent?.match(/Mattermost 服务器 https:\/\/broken\.test 没有响应：connect ECONNREFUSED/g)).toHaveLength(1)
 })
 
 it('leaves Feishu out of a GitHub-only deployment', async () => {
@@ -212,9 +212,9 @@ it('shows a refused Source save with the output of the tool that failed on its o
   await click(zh['tab.source'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   const feishu = all('.dt-card')[0]!
-  await type(field<HTMLInputElement>('服务器地址'), 'lark-broken')
+  await type(field<HTMLInputElement>('服务器地址'), 'https://broken.test')
   await act(async () => { feishu.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) }); await settle()
-  expect(feishu.querySelector('.dt-savebar [role="alert"]')?.textContent).toBe('Mattermost 服务器 https://broken.test 没有响应：connect ECONNREFUSED')
+  expect(feishu.querySelector('.dt-savebar [role="alert"]')?.textContent).toBe('Mattermost 服务器 https://broken.test 没有响应：connect ECONNREFUSED\nconnect ECONNREFUSED')
 })
 
 it('shows a setup problem on its Source card within one read of the settings, which the settings groups share', async () => {

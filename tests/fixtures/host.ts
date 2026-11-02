@@ -177,7 +177,7 @@ export async function startRuntime(seed?: (store: Store) => void) {
       sentPosts.push(JSON.parse(String(init.body))); return json({ id: `reply_${sentPosts.length}` })
     }
     if (path === '/api/v4/users/me') return json({ id: 'botuser0000000000000000001', username: 'dsh-bot', is_bot: true })
-    if (path === '/api/v4/users/ids') return json([{ id: MEMBER, username: 'alice' }])
+    if (path === '/api/v4/users/ids') return json([{ id: MEMBER, username: 'Alice' }])
     if (path.startsWith('/api/v4/channels/') && path.endsWith('/members')) return json([{ user_id: MEMBER, delete_at: 0 }])
     return new Response('{}', { status: 404 })
   }))

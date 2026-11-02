@@ -5,9 +5,8 @@ import { builtInBase, builtInParts, defaultPrompts } from '../src/app/prompts.ts
 import { UserError } from '../src/core/index.ts'
 import { KV } from '../src/kv.ts'
 import { RESOURCES } from '../src/app/resources.ts'
-import { CliError, Commands } from '../src/infra/commands.ts'
 import { IM_WORDS, NOTE_WORDS } from '../src/infra/text.ts'
-import { CHAT, feishu, startRuntime, type Host } from './fixtures/host.ts'
+import { CHAT, feishu, MEMBER, startRuntime, type Host } from './fixtures/host.ts'
 
 let h: Host
 beforeEach(async () => { h = await startRuntime() })
@@ -33,16 +32,16 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
     trigger_id: trigger.id, assignments: { items: [expect.objectContaining({ state: 'running' })] }, assignment: `ticket/${ticket.id}/assignment` })
   // The settings name each block's revision and hold the small blocks; a block reads whole by the name a save takes.
   const settings = await read('settings')
-  expect(settings).toMatchObject({ eval: { value: { mode: 'auto' } }, policy: { revision: expect.any(Number), allowed: { feishu: 1, github: 1 }, read: 'settings/policy' },
+  expect(settings).toMatchObject({ eval: { value: { mode: 'auto' } }, policy: { revision: expect.any(Number), allowed: { mattermost: 1, github: 1 }, read: 'settings/policy' },
     pause: { value: { paused: false } }, sources: expect.arrayContaining([expect.objectContaining({ id: 'github', read: 'settings/source:github' })]) })
-  expect(JSON.stringify(settings)).not.toContain('ou_alice')
+  expect(JSON.stringify(settings)).not.toContain(MEMBER)
   for (const block of ['policy', 'eval', 'executor', 'pause', 'source:github']) {
     const page = await read(`settings/${block}`) as { text: string }
     expect(JSON.parse(page.text)).toEqual({ block, revision: h.runtime.store.blockRevision(block as 'policy'), value: h.runtime.settings.block(block).value })
   }
-  expect(JSON.parse((await read('settings/policy') as { text: string }).text).value.sources.feishu.allowed).toEqual([{ id: 'ou_alice', name: 'Alice' }])
+  expect(JSON.parse((await read('settings/policy') as { text: string }).text).value.sources.mattermost.allowed).toEqual([{ id: MEMBER, name: 'Alice' }])
   await expect(read('settings/source:retired')).rejects.toThrow('Unknown settings block')
-  const skills = { built_in: ['dsh-superagent-feishu', 'dsh-superagent-github'], team: [] }
+  const skills = { built_in: ['dsh-superagent-mattermost', 'dsh-superagent-github'], team: [] }
   expect(await read('prompts')).toMatchObject({ revision: 0, read: 'prompts/0', skills, items: [expect.objectContaining({ revision: 0 })], next_offset: null })
   const models = [{ id: 'm1', name: 'One' }, { id: 'm2', name: 'Two' }]
   const catalog = { default: { provider: 'p', model: 'm1' }, groups: [{ id: 'p', name: 'Provider', models }], failures: [] }
@@ -251,7 +250,11 @@ it('returns where a reply stands: sent, or dropped when its conversation can no 
   await h.runTool(sessionId, 'orchestrator_report', { state: 'ready', summary: 'Done.' })
   const reply = (text: string) => h.runTool(h.runtime.masterId, 'orchestrator_reply', { ticket_id: ticket.id, purpose: 'result', text })
   expect(await reply('修好了。')).toEqual({ status: 'sent' })
-  vi.mocked(Commands.prototype.lark).mockRejectedValue(new CliError('the message was withdrawn', 230011))
+  // A reply into a conversation the Source no longer receives (404/403) is dropped, not retried elsewhere.
+  vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init?: RequestInit) =>
+    new URL(String(url)).pathname === '/api/v4/posts' && init?.method === 'POST'
+      ? new Response('{"message":"no permission"}', { status: 403 })
+      : new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })))
   expect(await reply('修好了，请看 PR。')).toEqual({ status: 'dropped' })
 })
 
@@ -303,7 +306,7 @@ it('releases the tools it registered for a Session once its agent is disposed, a
 
 it('reads a thread by the key cards show: its label, tickets, latest decisions and triggers, newest first, also for its own worker', async () => {
   const { ticket, trigger, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  const key = `feishu:${CHAT}:om_1`
+  const key = `mattermost:${CHAT}:post_1`
   const threads = await read('threads') as { items: { thread: string; label: string; read: string }[] }
   expect(threads.items[0]).toMatchObject({ thread: key, label: '@bot 修一下回归', read: `thread/${key}` })
   const thread = await read(`thread/${key}`)
@@ -313,8 +316,8 @@ it('reads a thread by the key cards show: its label, tickets, latest decisions a
   expect(await h.runTool(sessionId, 'orchestrator_read', { resource: `thread/${key}` })).toMatchObject({ thread: key })
   const elsewhere = feishu('5', '@bot 别的事', { chat_id: 'oc_other' })
   h.runtime.store.triggers.save(elsewhere)
-  h.runtime.store.threads.save({ key: `feishu:oc_other:om_5`, ref: { source: 'feishu', id: 'oc_other:om_5' }, createdAt: '', subscriptions: [], correlated: [], pending: [], meta: {} })
-  await expect(h.runTool(sessionId, 'orchestrator_read', { resource: 'thread/feishu:oc_other:om_5' })).rejects.toThrow('Unknown or inaccessible thread')
+  h.runtime.store.threads.save({ key: `mattermost:oc_other:post_5`, ref: { source: 'mattermost', id: 'oc_other:post_5' }, createdAt: '', subscriptions: [], correlated: [], pending: [], meta: {} })
+  await expect(h.runTool(sessionId, 'orchestrator_read', { resource: 'thread/mattermost:oc_other:post_5' })).rejects.toThrow('Unknown or inaccessible thread')
 })
 
 it('reads a ticket with the ids it is tied to, its reports by assignment, and its assignments and inputs a page at a time, each by the name its line gives or by its id', async () => {
@@ -329,7 +332,7 @@ it('reads a ticket with the ids it is tied to, its reports by assignment, and it
   h.runtime.store.tickets.save({ ...stored, assignments, inputs: [...stored.inputs, ...inputs] })
   type Page = { items: { read?: string; report: { read: string } }[]; next_resource?: string; next_offset?: number }
   const details = await read(`ticket/${ticket.id}`) as { inputs: Page; assignments: Page }
-  expect(details).toMatchObject({ trigger_id: ticket.origin.triggerId, decision_id: ticket.decisionId, threads: [{ thread: `feishu:${CHAT}:om_1` }],
+  expect(details).toMatchObject({ trigger_id: ticket.origin.triggerId, decision_id: ticket.decisionId, threads: [{ thread: `mattermost:${CHAT}:post_1` }],
     inputs: { next_resource: `ticket/${ticket.id}/inputs`, next_offset: 10 }, assignments: { next_resource: `ticket/${ticket.id}/assignments`, next_offset: 3 } })
   expect([details.inputs.items.length, details.assignments.items.length]).toEqual([10, 3])
   // The earlier assignments read on, so a worker reaches every report it continues from.
@@ -356,8 +359,9 @@ it('reads a trigger once with the message it replies to and the messages around 
   const at = (minute: number) => `2026-10-06T00:0${minute}:00.000Z`
   const message = (id: string, minute: number, overrides: Record<string, unknown> = {}) => ({ ...feishu(id, `message ${id}`, { root_id: 'om_root', ...overrides }), at: at(minute) })
   const ci = (id: string, minute: number) => ({ ...message(id, minute), source: 'github', human: false, text: '{"check":"build"}', meta: { ci: true } })
-  const asked = message('asked', 1), replying = message('reply', 3, { parent_id: 'om_asked' })
-  for (const item of [message('root', 0, { root_id: undefined }), asked, ci('ci-1', 2), replying, ci('ci-2', 4), message('later', 5)]) h.runtime.store.triggers.save(item)
+  // A Mattermost reply names its thread root, so the message it answers is the root of its own thread.
+  const asked = message('4', 1, { root_id: undefined }), replying = message('reply', 3, { root_id: 'om_4' })
+  for (const item of [message('root', 0, { root_id: undefined }), asked, ci('ci-1', 2), replying, ci('ci-2', 4), message('later', 5, { root_id: 'om_4' })]) h.runtime.store.triggers.save(item)
   const page = await read(`trigger/${replying.id}`)
   expect(page).toMatchObject({ trigger_id: replying.id, replied_to: { trigger_id: asked.id, read: `trigger/${asked.id}` },
     around: { before: { trigger_id: asked.id }, after: { trigger_id: feishu('later', '').id } }, text: 'message reply' })
@@ -390,7 +394,7 @@ it('shows a candidate with its thread\'s tickets open first, the tickets it reac
   await handBack(more.id)
   const followup = relaysOf('candidate').at(-1)!
   expect((followup.related_tickets as { ticket_id: string }[]).map(card => card.ticket_id)).toEqual([a.id, b.ticket_id])
-  expect(followup).toMatchObject({ tickets_total: 2, delivered_to: [a.id], thread: `feishu:${CHAT}:om_1` })
+  expect(followup).toMatchObject({ tickets_total: 2, delivered_to: [a.id], thread: `mattermost:${CHAT}:post_1` })
   expect(String(followup.next_action).length).toBeLessThanOrEqual(100)
   // A message elsewhere that names a pull request reads the tickets that follow it.
   const thread = { key: 'github:123', ref: { source: 'github', id: '123' }, createdAt: '', subscriptions: [a.id], correlated: [], pending: [], meta: {} }
@@ -432,14 +436,21 @@ it('tells the main Session of the settings, prompts, requeues and unsubscription
   h.runtime.receive(thanks); await h.runtime.idle()
   await h.route({ kind: 'ignore', trigger_id: thanks.id, reason: 'thanks' })
   expect(await h.runTool(h.runtime.masterId, 'orchestrator_trigger_requeue', { trigger_id: thanks.id })).toEqual({ queued: true })
-  expect(await h.runTool(h.runtime.masterId, 'orchestrator_thread_unsubscribe', { thread: `feishu:${CHAT}:om_1` })).toEqual({ removed: true, thread: `feishu:${CHAT}:om_1` })
+  expect(await h.runTool(h.runtime.masterId, 'orchestrator_thread_unsubscribe', { thread: `mattermost:${CHAT}:post_1` })).toEqual({ removed: true, thread: `mattermost:${CHAT}:post_1` })
   await h.runtime.idle()
   expect(notices().slice(before).filter(notice => !('ticket_ended' in notice))).toEqual([])
 })
 
 it('answers a policy sync with the counts and what changed, not the whole list', async () => {
-  vi.mocked(Commands.prototype.lark).mockResolvedValue({ users: [{ member_id: 'ou_alice', name: 'Alice' }, { member_id: 'ou_bob', name: 'Bob' }], has_more: false })
-  expect(await h.runTool(h.runtime.masterId, 'orchestrator_policy_sync', { source: 'feishu' })).toEqual({ source: 'feishu', allowed: 2, added: ['Bob'], removed: [] })
+  vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init?: RequestInit) => {
+    const path = new URL(String(url)).pathname
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (path.endsWith('/members')) return json([{ user_id: MEMBER, delete_at: 0 }, { user_id: 'ubob0000000000000000000000', delete_at: 0 }])
+    if (path === '/api/v4/users/ids') return json([{ id: MEMBER, username: 'Alice' }, { id: 'ubob0000000000000000000000', username: 'Bob' }])
+    return new Response('{}', { status: 404 })
+  }))
+  expect(await h.runTool(h.runtime.masterId, 'orchestrator_policy_sync', { source: 'mattermost' }))
+    .toEqual({ source: 'mattermost', allowed: 2, added: ['Bob'], removed: [] })
 })
 
 it('shows an Executor Session no id it cannot read: no Decision, no other ticket, no Trigger its ticket did not reach', async () => {
@@ -449,7 +460,7 @@ it('shows an Executor Session no id it cannot read: no Decision, no other ticket
   await h.runTool(sessionId, 'orchestrator_trigger_handback', { trigger_id: another.id, reason: 'Another fix.' })
   const other = await h.acceptedTicket(another)
   const worker = (resource: string) => h.runTool(sessionId, 'orchestrator_read', { resource })
-  const thread = await worker(`thread/feishu:${CHAT}:om_1`)
+  const thread = await worker(`thread/mattermost:${CHAT}:post_1`)
   expect(thread).not.toHaveProperty('tickets')
   expect(thread).not.toHaveProperty('decisions')
   for (const page of [thread, await worker(`ticket/${ticket.id}`), await worker(`trigger/${trigger.id}`)]) {
@@ -457,7 +468,7 @@ it('shows an Executor Session no id it cannot read: no Decision, no other ticket
     expect(shown).not.toContain(ticket.decisionId)
     expect(shown).not.toContain(other.ticket.id)
   }
-  expect(await read(`thread/feishu:${CHAT}:om_1`)).toMatchObject({ tickets: expect.arrayContaining([expect.objectContaining({ ticket_id: other.ticket.id })]),
+  expect(await read(`thread/mattermost:${CHAT}:post_1`)).toMatchObject({ tickets: expect.arrayContaining([expect.objectContaining({ ticket_id: other.ticket.id })]),
     decisions: expect.arrayContaining([expect.objectContaining({ decision_id: ticket.decisionId })]) })
   expect(await read(`ticket/${ticket.id}`)).toMatchObject({ decision_id: ticket.decisionId })
 })
@@ -467,7 +478,7 @@ it('marks the threads a worker follows for context apart from those a Source bou
   h.runtime.engine.bindThread(ticket.id, { source: 'github', id: '12' }, true)
   await h.runTool(sessionId, 'orchestrator_thread_follow', { thread: 'github:9', reason: 'The Issue it fixes.' })
   const { threads } = await read(`ticket/${ticket.id}`) as { threads: { thread: string }[] }
-  expect(threads).toEqual(expect.arrayContaining([{ thread: `feishu:${CHAT}:om_1` }, { thread: 'github:12', bound: true }, { thread: 'github:9', context: true }]))
+  expect(threads).toEqual(expect.arrayContaining([{ thread: `mattermost:${CHAT}:post_1` }, { thread: 'github:12', bound: true }, { thread: 'github:9', context: true }]))
   expect(threads).toHaveLength(3)
 })
 

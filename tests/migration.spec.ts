@@ -109,7 +109,7 @@ it('writes a schema 10 database in its current shape once, so nothing reads an o
   const [current, , second, first] = store.settingsHistory()
   expect(current).toMatchObject({ revision: 4, source: 'internal', settings })
   expect(store.get('settings')).toBeUndefined()
-  expect(first).toMatchObject({ source: 'panel', settings: { sources: { feishu: { config: { chats: [{ chatId: 'oc_team', listen: 'mentions' }] } } } } })
+  expect(first).toMatchObject({ source: 'panel', settings: { sources: { mattermost: { enabled: false, config: { channels: [{ channelId: 'oc_team', listen: 'mentions' }], directMessages: true } } } } })
   expect(second).toMatchObject({ source: 'tool', settings: { sources: { 'github-issue': { enabled: true } } } })
   expect(store.get('prompt-version:1')).toMatchObject({ legacy: { config: { guides: { release: 'Use guide/github and dsh-tag-feishu.' } } },
     config: { skills: { release: 'Use the github section and dsh-superagent-feishu.' } } })
@@ -245,8 +245,8 @@ it('writes a prompt version saved before the team sections in them, keeping its 
   const prompts = new Prompts(store, () => 100000, () => undefined, () => true)
   const { config } = prompts.version(3)
   expect(config.communication).toBe(defaultPrompts().communication)
-  expect(config.delivery).toContain('it changes fewer than 350 lines (additions plus deletions);')
-  expect(config.delivery).not.toContain('fewer than 200 lines')
+  expect(config.delivery).toContain('меньше 350 строк (добавления плюс удаления)')
+  expect(config.delivery).not.toContain('меньше 200 строк')
   // Guides that are now fixed or built-in are gone; the team's own skills stay, in current names.
   expect(Object.keys(config.skills)).toEqual(['identities', 'notes'])
   expect(config.skills.notes).toBe('Call orchestrator_route (kind accept) with trigger_id, read trigger/<id>, follow the work section and skill dsh-superagent-release, load dsh-superagent-github, cd "$DSH_SUPERAGENT_DIR".')
@@ -278,7 +278,7 @@ it('writes the removed auto-merge threshold and member identities into the promp
   const prompts = new Prompts(store, () => 100000, () => undefined, () => true)
   const migrated = prompts.current()
   expect(migrated).toMatchObject({ revision: 1, previousRevision: 0, source: 'settings-migration' })
-  expect(migrated.config.delivery).toContain('it changes fewer than 350 lines (additions plus deletions);')
+  expect(migrated.config.delivery).toContain('меньше 350 строк (добавления плюс удаления)')
   expect(migrated.config.skills.identities).toContain('- Alice (Feishu ou_alice) is @alice on GitHub')
   expect(migrated.config.skills.identities).not.toContain('Bob')
   expect(store.get('settings-before-9')).toBeUndefined()
@@ -403,7 +403,7 @@ it('writes the Sources\' records in their current shape once, so no Source conve
   }
   db.close()
   const store = new Store(path)
-  expect(store.get(KV.feishu.topics('oc_team'))).toEqual({ omt_old: '2026-09-01T00:00:00.000Z' })
+  expect(store.get('feishu-history-threads:oc_team')).toEqual({ omt_old: '2026-09-01T00:00:00.000Z' })
   expect(store.triggers.get('dm')!.channel!.address).toEqual({ chatId: 'oc_dm', messageId: 'om_1', direct: 'true' })
   expect(store.receipts.waiting()[0]!.channel.address).toEqual({ chatId: 'oc_dm', messageId: 'om_1', direct: 'true' })
   expect(store.threads.get('feishu:oc_team:om_9')!.meta.url).toBe('https://applink.feishu.cn/client/chat/open?openChatId=oc_team')
