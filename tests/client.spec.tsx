@@ -12,12 +12,13 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 type Entry = { options: { name: string; id?: string; key?: string; order?: number; locale?: string; label?: () => string }; component: ComponentType<Record<string, unknown>> }
 const t = ((key: keyof typeof zh) => zh[key] ?? key) as never
-function fixture(listed: string[]) {
+function fixture(listed: string[], registered: string[] = []) {
   const entries: Entry[] = []
   const dictionaries: Record<string, unknown> = {}
   const ctx = {
     slots: { inject: (_name: string, register: () => void) => register(), register: (options: Entry['options'], component: Entry['component']) => { entries.push({ options, component }); return () => {} } },
-    locale: { register: (ns: string, value: unknown, dict?: unknown) => { dictionaries[ns] = dict ?? value; return () => {} }, addLanguage: () => () => {}, bind: () => t },
+    locale: { getLocale: () => ({ locales: registered.map(id => ({ id, label: id, fallback: 'en' })) }),
+      register: (ns: string, value: unknown, dict?: unknown) => { dictionaries[ns] = dict ?? value; return () => {} }, addLanguage: vi.fn(() => () => {}), bind: () => t },
     effect: (effect: () => unknown) => { effect() },
     sessions: { list: { getSnapshot: () => ({ phase: 'ready', byId: Object.fromEntries(listed.map(id => [id, {}])) }) }, refresh: vi.fn(async () => {}) },
     uiWorkspace: { openSession: vi.fn() },
@@ -57,6 +58,12 @@ it('registers a localized main panel, sidebar entry and Plugin Manager row page,
   expect(main.options).toMatchObject({ key: 'dsh-superagent', locale: 'dshSuperagent' })
   expect(nav.options).toMatchObject({ id: 'dsh-superagent', order: 10, locale: 'dshSuperagent' })
   expect(nav.options.label?.()).toBe('Superagent')
+})
+
+it('does not re-register the ru language a language pack already defines, and still adds its dictionary', () => {
+  const { ctx, dictionaries } = fixture([], ['ru'])
+  expect(ctx.locale.addLanguage).not.toHaveBeenCalled()
+  expect(dictionaries.dshSuperagent).toBeDefined()
 })
 
 it('opens a listed Session through the workspace from the main panel', async () => {
