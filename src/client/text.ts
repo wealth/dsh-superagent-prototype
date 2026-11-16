@@ -9,7 +9,7 @@ import { reasonText, type Reason } from '../core/reasons.ts'
 export type T = Translate<DshSuperagentKey>
 export const errorText = (failure: unknown): string => failure instanceof Error ? failure.message : String(failure)
 export const localized = (t: T, text: Localized | string | undefined): string =>
-  typeof text === 'string' ? text : text ? text[t('lang') === 'en' ? 'en' : 'zh'] : ''
+  typeof text === 'string' ? text : text ? text[t('lang') as keyof Localized] ?? text.en : ''
 export const actorName = (t: T, actor: { name?: Localized } | undefined): string => actor?.name ? localized(t, actor.name)
   : t('automatedNotice')
 export function valueLabel(t: T, group: string, key: string | undefined): string {
@@ -21,7 +21,7 @@ export function valueLabel(t: T, group: string, key: string | undefined): string
 /** Format one or more structured or raw reasons in the active UI language, truncating multi-line host errors to their first line. */
 export function reasonLabel(t: T, reason: string | Reason | readonly Reason[] | undefined): string {
   if (typeof reason === 'string') return reason ? label(t, { code: reason }) : ''
-  return [reason ?? []].flat().map(item => label(t, item)).filter(Boolean).join('；')
+  return [reason ?? []].flat().map(item => label(t, item)).filter(Boolean).join(t('reasonSeparator'))
 }
 function label(t: T, reason: Reason): string {
   const key = `reason.${reason.code}` as DshSuperagentKey
@@ -41,7 +41,7 @@ export function readableMarkers(t: T, text: string): string {
     .replace(/\[Media: [^\]]*\]/g, t('mediaMarker')).replace(/\[Merged forward\]/g, t('forwardMarker'))
     .replace(/@_user_\d+/g, t('unknownMention'))
 }
-const timeLocale = (lang: string) => lang === 'en' ? 'en' : 'zh-CN'
+const timeLocale = (lang: string) => lang === 'zh' ? 'zh-CN' : lang
 export function when(value: string | undefined, lang: string): string {
   if (!value) return ''
   const date = new Date(value)
