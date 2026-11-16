@@ -9,10 +9,12 @@ import { SetupError } from '../src/setup.ts'
 
 type Handler = (req: unknown, res: unknown) => Promise<void>
 type Headers = Record<string, string | undefined>
+interface ServeOptions { protocol?: string; connection?: { requestRejection: (request: unknown) => 401 | 403 | undefined } | undefined }
 /** Mount management HTTP routes on a fake web server and return a request helper that includes default panel headers. */
-function serve(runtime: Partial<Record<keyof HttpHost, unknown>>, host = '127.0.0.1') {
+function serve(runtime: Partial<Record<keyof HttpHost, unknown>>, host = '127.0.0.1', options: ServeOptions = {}) {
   let handler: Handler = async () => {}
-  const ctx = { webServer: { host, port: 3082, register: (route: { handler: Handler }) => { handler = route.handler; return () => {} } } }
+  const ctx = { webServer: { host, port: 3082, protocol: options.protocol ?? 'http:', register: (route: { handler: Handler }) => { handler = route.handler; return () => {} } },
+    get: (name: string) => name === 'connection' ? options.connection : undefined }
   registerHttp(ctx as never, { ready: Promise.resolve(), ...runtime } as unknown as HttpHost)
   return async (method: string, path: string, body?: unknown, headers: Headers = {}) => {
     let status = 0, text = ''
@@ -78,6 +80,31 @@ it('answers only a same-origin request from the panel on the loopback address', 
   expect(await post({ host: 'localhost:3082', origin: 'http://localhost:3082' })).toMatchObject({ status: 200 })
   // Management routes require a loopback Web server.
   expect(() => serve({}, '0.0.0.0')).toThrow('Orchestrator management requires a loopback Web server')
+})
+
+it('admits a request naming another host only through DSH web authentication', async () => {
+  const running = { sessions: { delivery: async () => 'injected' }, engine: { unsubscribe: () => true } }
+  // The connection fence accepts a trusted origin whose browser auth cookie is valid; the panel proceeds.
+  const accepted = serve(running, '127.0.0.1', { connection: { requestRejection: () => undefined } })
+  expect(await accepted('POST', 'threads/github%3A1/unsubscribe', undefined, { host: 'bots.example:3082', origin: 'https://bots.example:3082' }))
+    .toMatchObject({ status: 200 })
+  // The fence refuses an unauthenticated request with 401 and an untrusted origin with 403; the panel words each.
+  const refusing = (rejection: 401 | 403) => serve({}, '127.0.0.1', { connection: { requestRejection: () => rejection } })
+  expect(await refusing(401)('GET', 'state', undefined, { host: 'bots.example:3082' }))
+    .toEqual({ status: 401, body: { error: 'DSH web authentication required; reopen the URL printed by dsh web.' } })
+  expect(await refusing(403)('GET', 'state', undefined, { host: 'bots.example:3082' }))
+    .toEqual({ status: 403, body: { error: 'Untrusted origin for the management API' } })
+  // Without the connection service a non-loopback host keeps the same-origin refusal.
+  expect(await serve({})('GET', 'state', undefined, { host: 'bots.example:3082' }))
+    .toEqual({ status: 403, body: { error: 'Same-origin management request required' } })
+})
+
+it('compares a loopback request\'s Origin against the listener protocol', async () => {
+  const running = { sessions: { delivery: async () => 'injected' }, engine: { unsubscribe: () => true } }
+  const call = serve(running, '127.0.0.1', { protocol: 'https:' })
+  expect(await call('POST', 'threads/github%3A1/unsubscribe', undefined, { origin: 'https://127.0.0.1:3082' })).toMatchObject({ status: 200 })
+  expect(await call('POST', 'threads/github%3A1/unsubscribe', undefined, { origin: 'http://127.0.0.1:3082' }))
+    .toEqual({ status: 403, body: { error: 'Same-origin management request required' } })
 })
 
 it('answers a prompt save that lost a race with 409, and a settings body over 128 KiB with 400', async () => {
