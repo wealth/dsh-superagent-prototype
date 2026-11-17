@@ -16,18 +16,21 @@ export { runAgentmail } from './agentmail-loops.ts'
 export { resolveAgentmail, type AgentmailAccount } from '../deployment.ts'
 
 /** Configuration of the AgentMail Source: the account whose inbox it watches, and how it polls. */
+const EMAIL = '[^\\s@]+@[^\\s@]+\\.[^\\s@]+'
 const AgentmailConfigSchema = z.object({
   apiKey: z.string().trim().default(''),
   inboxId: z.string().trim().default(''),
   pollSeconds: z.number().int().min(60).max(3600).default(60),
   failuresBeforeError: z.number().int().min(1).max(20).default(3),
   readPageSize: z.number().int().min(1).max(50).default(20),
+  senders: z.array(z.object({ address: z.string().regex(new RegExp(`^${EMAIL}$`), 'email address') }).strict())
+    .refine(entries => new Set(entries.map(entry => entry.address.toLowerCase())).size === entries.length, 'Duplicate addresses').default([]),
 }).strict()
 export type AgentmailConfig = z.infer<typeof AgentmailConfigSchema>
 
-const EMAIL = '[^\\s@]+@[^\\s@]+\\.[^\\s@]+'
 export const agentmailKind: SourceKind<AgentmailConfig> = {
   kind: SOURCE,
+  order: 30,
   title: { zh: 'AgentMail', en: 'AgentMail', ru: 'AgentMail' },
   description: {
     zh: '智能体在 AgentMail 的收件箱：接收发到它的邮件，并轮询已订阅线程的新回复。',
@@ -43,6 +46,11 @@ export const agentmailKind: SourceKind<AgentmailConfig> = {
         en: 'Written as the email address, for example agent@example.com. Saving checks the account and the inbox with the key, then restarts dsh-superagent.',
         ru: 'Пишется как адрес электронной почты, например agent@example.com. При сохранении ключом проверяются аккаунт и ящик, затем dsh-superagent перезапускается.' } },
     { key: 'inbox', label: { zh: '收件箱', en: 'Inbox', ru: 'Ящик' }, type: 'fact', settings: 'deployment' },
+    { key: 'senders', type: 'rows', label: { zh: '接收的发件人', en: 'Senders to receive', ru: 'От кого принимать письма' },
+      hint: { zh: '名单为空时接收所有来信；非空时只接收这些地址的邮件。它们是否成为候选仍由 Policy 决定。',
+        en: 'While the list is empty every message is received; once it names addresses, only their mail is received. Whether a message becomes a candidate is still up to the Policy.',
+        ru: 'Пока список пуст, принимаются все письма; когда в нём есть адреса — только письма от них. Станет ли письмо кандидатом, по-прежнему решает Политика.' },
+      columns: [{ key: 'address', type: 'text', label: { zh: '地址', en: 'Address', ru: 'Адрес' }, pattern: EMAIL }] },
     { key: 'pollSeconds', type: 'number', advanced: true, min: 60, max: 3600, label: { zh: '轮询间隔 / 秒', en: 'Polling interval / seconds', ru: 'Интервал опроса / сек' } },
     { key: 'failuresBeforeError', type: 'number', advanced: true, min: 1, max: 20, label: { zh: '连续失败几次后报告异常', en: 'Failed polls before reporting an error', ru: 'Сколько сбоев опроса подряд до сообщения об ошибке' },
       hint: { zh: '单次网络中断会在下一次轮询时自动重试，不必报告。', en: 'A single network interruption is retried on the next poll and need not be reported.',
@@ -52,7 +60,13 @@ export const agentmailKind: SourceKind<AgentmailConfig> = {
   ],
   health: ['agentmail'],
   // Every message to the inbox addresses the agent directly; the Policy's admission table decides candidacy.
-  scope: () => ({ listened: true, observed: false, row: 'inbox' }),
+  // A non-empty sender list narrows what the Source receives.
+  scope({ meta }, config) {
+    const from = String(meta.from ?? '')
+    if (config.senders.length && !config.senders.some(sender => sender.address.toLowerCase() === from.toLowerCase()))
+      return { listened: false, reason: 'sender_not_listened' }
+    return { listened: true, observed: false, row: 'inbox' }
+  },
   channel: { send: sendAgentmail, link: agentmailLink },
   threadContext: agentmailThreadContext,
   // A query naming a thread key (`agentmail:<thread id>`) names that Thread; opaque AgentMail IDs search Triggers by ID.

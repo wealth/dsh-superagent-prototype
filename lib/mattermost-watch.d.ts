@@ -1,5 +1,5 @@
 import { S as ChannelRef, U as Trigger, ft as MattermostBot, mt as resolveMattermostBot } from "./intake-8_Cr7w_z.js";
-import { i as SourceKind, n as ChannelLinks, o as SourceContext, r as ContextMessage, t as ChannelLink, y as SourceRegistry } from "./kind-DnCoNP2k.js";
+import { i as SourceKind, n as ChannelLinks, o as SourceContext, r as ContextMessage, t as ChannelLink, y as SourceRegistry } from "./kind-rzGbPZIt.js";
 import { Context } from "@deepseek-ai/cordis";
 import { z } from "zod";
 //#region src/sources/mattermost-trigger.d.ts

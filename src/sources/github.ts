@@ -37,6 +37,7 @@ function scopeOf(meta: Record<string, unknown>): Scope | undefined {
 }
 export const githubKind: SourceKind<GithubConfig> = {
   kind: SOURCE,
+  order: 10,
   title: { zh: 'GitHub', en: 'GitHub', ru: 'GitHub' },
   description: { zh: '智能体的 GitHub 账号；接收仓库里发给它的通知、已订阅 Issue 与 PR 的讨论、CI 状态变化和 PR 合并关闭。', en: 'The agent\'s GitHub accounts; receives notifications to it in the repository, discussion on subscribed Issues and PRs, CI changes, and PR merge or close.', ru: 'Учётные записи GitHub агента: принимает уведомления о репозитории, обсуждения подписанных Issue и PR, изменения CI и слияние или закрытие PR.' },
   schema: GithubConfigSchema,

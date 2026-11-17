@@ -53,6 +53,11 @@ async function pollLoop(ctx: SourceContext, signal: AbortSignal): Promise<void> 
   }
 }
 
+/** True when the Source still receives a message from this sender: everything while the whitelist is empty, only listed addresses after. */
+function listened(config: AgentmailConfig, message: AgentmailMessage): boolean {
+  return !config.senders.length || config.senders.some(sender => sender.address.toLowerCase() === addressOf(message.from).toLowerCase())
+}
+
 /** Returns an error health once `failures` consecutive polls fail, or undefined so a single network interruption stays quiet. */
 export function pollFailure(failures: number, threshold: number, error: unknown): Health | undefined {
   return failures >= threshold ? health('error', 'pollFailures', { count: String(failures), error: String(error) }) : undefined
@@ -89,6 +94,7 @@ async function readThread(ctx: SourceContext, inbox: AgentmailAccount, item: z.i
   // cursor, so its earlier history stays unread until the next email revives the thread.
   const fresh = page.messages.filter(message => Date.parse(message.timestamp) >
     (known ? Date.parse(known.lastAt) : Date.parse(since) - 5000))
+    .filter(message => listened(config, message))
   for (const message of fresh) {
     if (signal.aborted) return
     await receive(ctx, agentmailTrigger(message, inbox.inboxId), item)

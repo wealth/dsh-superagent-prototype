@@ -32,6 +32,7 @@ export type MattermostConfig = z.infer<typeof MattermostConfigSchema>
 
 export const mattermostKind: SourceKind<MattermostConfig> = {
   kind: SOURCE,
+  order: 20,
   refreshLabels: (host, signal) => refreshChannelNames(sourceContext(host, mattermostKind), signal),
   title: { zh: 'Mattermost', en: 'Mattermost', ru: 'Mattermost' },
   description: { zh: '接收下列频道和私信里发给机器人的消息，并轮询订阅的线程。', en: 'Receives messages to the bot in these channels and direct messages, and polls subscribed Threads.',

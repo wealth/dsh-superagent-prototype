@@ -912,6 +912,8 @@ interface TriggerContext {
 interface SourceKind<C extends Record<string, unknown> = Record<string, unknown>> {
   /** Stable ID; a default instance with the same ID exists when none is stored. */
   kind: string;
+  /** Display order among Source cards, lower first; kinds without it follow, alphabetically. */
+  order?: number;
   title: Localized;
   description: Localized;
   /** Read-only status facts derived from `deployment` (undefined while waiting for setup), keyed by field key. */

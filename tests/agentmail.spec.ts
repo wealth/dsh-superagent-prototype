@@ -4,6 +4,7 @@ import { Engine, key, type Assessor, type Executor, type Trigger } from '../src/
 import { AgentmailError, agentmailFetch, sendAgentmail } from '../src/sources/agentmail-channel.ts'
 import { apply as applyAgentmail, agentmailKind } from '../src/sources/agentmail.ts'
 import { pollFailure } from '../src/sources/agentmail-loops.ts'
+import { KV } from '../src/kv.ts'
 import { addressOf, agentmailChannel, agentmailParent, agentmailRef, agentmailTrigger, agentmailTriggerId, SOURCE, type AgentmailMessage } from '../src/sources/agentmail-trigger.ts'
 import { agentmailThreadContext } from '../src/sources/agentmail-read.ts'
 import { Store } from '../src/app/store.ts'
@@ -12,6 +13,8 @@ import { HealthBoard } from '../src/infra/health.ts'
 import { testDeployment } from './fixtures/deployment.ts'
 import { SettingsSchema, settingsPolicy } from '../src/policy.ts'
 import { SourceRegistry } from '../src/sources/registry.ts'
+import { mattermostKind } from '../src/sources/mattermost.ts'
+import { githubKind } from '../src/sources/github.ts'
 import { sourceContextOf, type SourceContextDeps } from '../src/app/source-context.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -130,6 +133,51 @@ describe('agentmail source', () => {
     expect(agentmailKind.find!('bob@example.test')).toEqual({ threads: [], terms: [] })
   })
 
+  it('receives only the whitelisted senders once the list names any, case-insensitively', () => {
+    const config = agentmailKind.schema.parse({ apiKey: 'k', inboxId: INBOX, senders: [{ address: 'Bob@example.test' }] })
+    expect(agentmailKind.scope!.call(agentmailKind, { meta: { from: 'BOB@example.test' } }, config)).toEqual({ listened: true, observed: false, row: 'inbox' })
+    expect(agentmailKind.scope!.call(agentmailKind, { meta: { from: 'someone@else.test' } }, config))
+      .toEqual({ listened: false, reason: 'sender_not_listened' })
+    // The whitelist rejects a malformed address at save time.
+    expect(() => agentmailKind.schema.parse({ apiKey: 'k', inboxId: INBOX, senders: [{ address: 'not-an-email' }] })).toThrow()
+  })
+
+  it('skips mail from senders outside the whitelist while still advancing the thread cursor', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const threads: { thread_id: string; timestamp: string; last_message_id: string; message_count: number; subject?: string }[] = []
+      const messages: AgentmailMessage[] = []
+      const h = host({}, url => {
+        if (url.pathname === `/v0/inboxes/${INBOX}/threads`) return Response.json({ threads })
+        if (url.pathname.startsWith('/v0/threads/')) {
+          const id = decodeURIComponent(url.pathname.slice('/v0/threads/'.length))
+          return Response.json({ thread_id: id, messages: messages.filter(item => item.thread_id === id) })
+        }
+        return undefined
+      })
+      // The whitelist names only Bob; the saved config carries it to the poll loop through the Source's settings.
+      const whitelisted = SettingsSchema.parse({ ...h.store.settings(),
+        sources: { agentmail: { enabled: true, config: { apiKey: 'test-key', inboxId: INBOX, failuresBeforeError: 2, senders: [{ address: 'bob@example.test' }] } } } })
+      h.store.saveSettings(whitelisted)
+      const disposers: (() => unknown)[] = []
+      applyAgentmail({ orchestrator: h, effect: (effect: () => () => unknown) => { disposers.push(effect()) } } as never)
+      await vi.advanceTimersByTimeAsync(1000)
+      const at = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOString()
+      messages.push(message({ message_id: 'm1', thread_id: 't1', timestamp: at(2) }))
+      threads.push({ thread_id: 't1', timestamp: at(2), last_message_id: 'm1', message_count: 1 })
+      await vi.advanceTimersByTimeAsync(61_000)
+      expect(h.receive).toHaveBeenCalledTimes(1) // Bob's mail is received
+      const secondAt = at(62)
+      messages.push(message({ message_id: 'm2', thread_id: 't1', from: 'someone@else.test', timestamp: secondAt }))
+      threads[0] = { ...threads[0]!, timestamp: secondAt, last_message_id: 'm2', message_count: 2 }
+      await vi.advanceTimersByTimeAsync(61_000)
+      expect(h.receive).toHaveBeenCalledTimes(1) // the stranger's mail is not, and the cursor moved on
+      expect(h.state.get(KV.agentmail.thread('t1'))).toEqual({ lastMessageId: 'm2', lastAt: secondAt })
+      for (const dispose of disposers) await dispose()
+      await h.stop()
+    } finally { vi.useRealTimers() }
+  })
+
   it('lists one admission row for the inbox where any sender writing to it is a candidate', () => {
     const rows = agentmailKind.policy!.rows!({})
     expect(rows).toEqual([{ id: 'inbox', note: expect.anything(), label: expect.anything(),
@@ -246,6 +294,13 @@ describe('agentmail source', () => {
   it('counts failures with the same threshold helper the GitHub poll uses', () => {
     expect(pollFailure(1, 2, new Error('x'))).toBeUndefined()
     expect(pollFailure(2, 2, new Error('x'))).toMatchObject({ state: 'error', code: 'pollFailures', values: { count: '2', error: 'Error: x' } })
+  })
+
+  it('orders the Source cards GitHub, Mattermost, AgentMail whatever way the kinds registered', () => {
+    const board = new HealthBoard()
+    const sources = new SourceRegistry(() => SettingsSchema.parse({}), board)
+    sources.register(agentmailKind); sources.register(mattermostKind); sources.register(githubKind)
+    expect(sources.instances().map(instance => instance.kind)).toEqual(['github', 'mattermost', 'agentmail'])
   })
 
   it('labels each polled thread with its subject', async () => {

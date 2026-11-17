@@ -1,5 +1,5 @@
 import { S as ChannelRef, U as Trigger, ct as AgentmailAccount, l as OutboundMessage, pt as resolveAgentmail } from "./intake-8_Cr7w_z.js";
-import { a as ThreadContext, i as SourceKind, n as ChannelLinks, o as SourceContext, t as ChannelLink } from "./kind-DnCoNP2k.js";
+import { a as ThreadContext, i as SourceKind, n as ChannelLinks, o as SourceContext, t as ChannelLink } from "./kind-rzGbPZIt.js";
 import { Context } from "@deepseek-ai/cordis";
 import { z } from "zod";
 //#region src/sources/agentmail-trigger.d.ts
@@ -63,13 +63,15 @@ declare const agentmailThreadContext: ThreadContext<{
 declare const runAgentmail: (ctx: SourceContext, signal: AbortSignal) => Promise<unknown>;
 //#endregion
 //#region src/sources/agentmail.d.ts
-/** Configuration of the AgentMail Source: the account whose inbox it watches, and how it polls. */
 declare const AgentmailConfigSchema: z.ZodObject<{
   apiKey: z.ZodDefault<z.ZodString>;
   inboxId: z.ZodDefault<z.ZodString>;
   pollSeconds: z.ZodDefault<z.ZodNumber>;
   failuresBeforeError: z.ZodDefault<z.ZodNumber>;
   readPageSize: z.ZodDefault<z.ZodNumber>;
+  senders: z.ZodDefault<z.ZodArray<z.ZodObject<{
+    address: z.ZodString;
+  }, z.core.$strict>>>;
 }, z.core.$strict>;
 type AgentmailConfig = z.infer<typeof AgentmailConfigSchema>;
 declare const agentmailKind: SourceKind<AgentmailConfig>;
