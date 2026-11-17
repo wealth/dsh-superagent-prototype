@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Config, executable, machineOf, resolveDeployment, resolveMattermostBot, type Machine, type Probe } from '../src/deployment.ts'
+import { Config, executable, machineOf, resolveAgentmail, resolveDeployment, resolveMattermostBot, type Machine, type Probe } from '../src/deployment.ts'
 import { gitEnv } from './fixtures/git.ts'
 
 const exec = promisify(execFile)
@@ -99,5 +99,27 @@ describe('setup', () => {
     await refuses('mattermostUnauthorized', {}, 401, '{"message":"token is invalid"}')
     await refuses('mattermostUnreachable', { url: 'https://mattermost.test', output: 'HTTP 503' }, 503, 'boom')
     await refuses('mattermostNoBot', {}, 200, '{"message":"no user"}')
+  })
+  it('reads the AgentMail account after checking the key and the inbox, or finds none when the Source names none', async () => {
+    expect(await resolveAgentmail(machine(), {})).toBeUndefined()
+    const respond = (status: number, body: object | string, path: string): typeof fetch => async (url, init) => {
+      expect(url).toBe(`https://api.agentmail.to/v0${path}`)
+      expect(init?.headers).toEqual({ Authorization: 'Bearer mail-key' })
+      return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+    }
+    const account = { apiKey: 'mail-key', inboxId: 'agent@agentmail.test' }
+    const me = respond(200, {}, '/auth/me')
+    const inbox = respond(200, { inbox_id: account.inboxId }, `/inboxes/${account.inboxId}`)
+    let call = 0
+    const ok: typeof fetch = async (url, init) => (call++ === 0 ? me : inbox)(url, init)
+    expect(await resolveAgentmail(machine(), account, ok)).toEqual(account)
+    const refuses = async (code: string, values: Record<string, unknown>, statuses: [number, number]) => {
+      let step = 0
+      const chain: typeof fetch = async (url, init) => respond(statuses[step++] ?? statuses[1], '{}', new URL(String(url)).pathname.slice('/v0'.length))(url, init)
+      return expect(resolveAgentmail(machine(), account, chain)).rejects.toEqual(setupError('agentmail', code, values))
+    }
+    await refuses('agentmailUnauthorized', {}, [401, 200])
+    await refuses('agentmailInboxMissing', { inbox: account.inboxId }, [200, 404])
+    await refuses('agentmailUnreachable', { output: 'HTTP 503' }, [503, 200])
   })
 })

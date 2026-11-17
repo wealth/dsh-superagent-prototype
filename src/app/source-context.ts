@@ -22,6 +22,8 @@ export interface SourceContextDeps {
   readonly setupProblem?: SetupProblem | undefined
   /** Why the Mattermost bot check failed, for the Mattermost Source only. */
   readonly mattermostProblem?: SetupProblem | undefined
+  /** Why the AgentMail account check failed, for the AgentMail Source only. */
+  readonly agentmailProblem?: SetupProblem | undefined
   /** Hands a Trigger to the Engine and schedules the pass that assesses it. */
   receive(trigger: Trigger): ReceiveResult | Promise<ReceiveResult>
 }
@@ -38,7 +40,7 @@ export function sourceContextOf(deps: SourceContextDeps, kind: { kind: string; h
     commands: deps.commands,
     ready: deps.ready,
     configured: () => deps.configured(),
-    get problem() { return [deps.mattermostProblem, deps.setupProblem].find(problem => problem?.place === kind.kind) },
+    get problem() { return [deps.mattermostProblem, deps.agentmailProblem, deps.setupProblem].find(problem => problem?.place === kind.kind) },
     config: <C extends Record<string, unknown>>(id: string) => {
       const instance = deps.sources.instance<C>(id)
       return instance?.enabled ? instance.config : undefined

@@ -13,7 +13,7 @@ import { policyVersion } from '../policy.ts'
 import { SettingsConflict, type Settings } from './settings.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
 import { UserError, type EngineForPeople, type Ticket } from '../core/index.ts'
-import { mattermostPublic, type Deployment, type Machine } from '../deployment.ts'
+import { agentmailPublic, mattermostPublic, type Deployment, type Machine } from '../deployment.ts'
 import type { DshExecutor } from '../executor/dsh.ts'
 import type { Health } from '../sources/host.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
@@ -48,6 +48,7 @@ export interface HttpHost {
   readonly deployment: Deployment
   readonly setupProblem?: SetupProblem | undefined
   readonly mattermostProblem?: SetupProblem | undefined
+  readonly agentmailProblem?: SetupProblem | undefined
   configured(): boolean
   links(): LinkTarget
   ticketEnvironment(ticket: Ticket): Variable[]
@@ -99,9 +100,10 @@ function machineView({ stateDir, promptMaxChars, admissionContextMaxPages, admis
 function setupView(runtime: HttpHost) {
   const resolved = runtime.configured() ? runtime.deployment : undefined
   return {
-    machine: machineView(runtime.machine), problem: runtime.setupProblem ?? null, mattermostProblem: runtime.mattermostProblem ?? null,
+    machine: machineView(runtime.machine), problem: runtime.setupProblem ?? null, mattermostProblem: runtime.mattermostProblem ?? null, agentmailProblem: runtime.agentmailProblem ?? null,
     accounts: resolved ? { repository: resolved.repository, agent: resolved.github.login,
-      mattermost: resolved.mattermost ? mattermostPublic(resolved.mattermost) : null } : null,
+      mattermost: resolved.mattermost ? mattermostPublic(resolved.mattermost) : null,
+      agentmail: resolved.agentmail ? agentmailPublic(resolved.agentmail) : null } : null,
   }
 }
 /** Build the `/orchestrator/api/state` response consumed by the management panel and `scripts/dsh-superagent status` (`docs/006-deployment.md`). */
@@ -113,7 +115,7 @@ export function stateView(runtime: HttpHost) {
 }
 const views = (runtime: HttpHost): ViewHost => ({ store: runtime.store, sources: runtime.sources, links: runtime.links() })
 const setupState = (runtime: HttpHost): SetupState => ({ deployment: runtime.configured() ? runtime.deployment : undefined,
-  problem: runtime.setupProblem, mattermostProblem: runtime.mattermostProblem })
+  problem: runtime.setupProblem, mattermostProblem: runtime.mattermostProblem, agentmailProblem: runtime.agentmailProblem })
 export type StateView = ReturnType<typeof stateView>
 /** Builds a ticket's detail view; `environment` is empty while waiting for setup because it requires the resolved deployment. */
 function ticketPage(runtime: HttpHost, id: string) {

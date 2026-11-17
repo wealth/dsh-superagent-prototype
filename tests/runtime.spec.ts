@@ -20,6 +20,7 @@ import { KV } from '../src/kv.ts'
 import { SettingsSchema, policyVersion, type SettingsOrigin } from '../src/policy.ts'
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { mattermostKind } from '../src/sources/mattermost.ts'
+import { agentmailKind, agentmailTrigger, type AgentmailMessage } from '../src/sources/agentmail.ts'
 import { githubKind, pollRound } from '../src/sources/github.ts'
 import { CliError, Commands } from '../src/infra/commands.ts'
 import { UserError, key, runningAssignment, said, threadKey, waitsForPerson, type Trigger } from '../src/core/index.ts'
@@ -99,7 +100,7 @@ function seed(store: Store, accounts: Accounts = {}): void {
   const { mattermost: _mm, ...others } = settings.sources as Record<string, { enabled: boolean; config: Record<string, unknown> }>
   const mattermost = accounts.mattermost === null ? undefined
     : { ...settings.sources.mattermost?.config, url: 'https://mattermost.test', token: 'test-token', ...accounts.mattermost }
-  store.saveSettings(SettingsSchema.parse({ ...settings, sources: { ...others, github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT(), ...accounts.github } }, ...mattermost ? { mattermost: { enabled: true, config: mattermost } } : {} } }))
+  store.saveSettings(SettingsSchema.parse({ ...settings, sources: { ...others, github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT(), ...accounts.github } }, ...mattermost ? { mattermost: { enabled: true, config: mattermost } } : {}, agentmail: { enabled: true, config: { apiKey: 'test-key', inboxId: AGENTMAIL_INBOX } } } }))
 }
 let restarts: ReturnType<typeof vi.fn<() => void>>
 async function restart(machine: Partial<Machine> = {}, accounts: Accounts = {}): Promise<Runtime> {
@@ -139,6 +140,16 @@ async function route(item: Record<string, unknown>): Promise<Record<string, unkn
   if (results[0]!.refused) throw new Error(String(results[0]!.refused))
   return results[0]!
 }
+/** AgentMail constants for the runtime tests: the watched inbox, the allowed sender, the fake inbox and its sent replies. */
+const AGENTMAIL_INBOX = 'agent@agentmail.test', SENDER = 'bob@example.test'
+const mail: AgentmailMessage[] = [], sentReplies: { body: unknown; key?: string }[] = []
+/** Builds an AgentMail trigger the way the Source's poll loop would produce one. */
+function agentmail(id: string, text: string): Trigger {
+  const item: AgentmailMessage = { message_id: `msg_${id}`, thread_id: `th_${id}`, from: SENDER, to: [AGENTMAIL_INBOX],
+    timestamp: new Date(Date.parse('2026-09-09T00:00:00Z') + Number(id.replace(/\D/g, '') || 0) * 1000).toISOString(), text, labels: [] }
+  return agentmailTrigger(item, AGENTMAIL_INBOX)!
+}
+
 async function acceptedTicket(trigger = feishu('1', '@bot 修一下回归')) {
   await receive(trigger)
   expect(relays(runtime.masterId).some(item => item.trigger_id === trigger.id)).toBe(true)
@@ -160,6 +171,26 @@ beforeEach(async () => {
     if (path.startsWith('/api/v4/posts/') && path.endsWith('/thread')) {
       const id = path.split('/')[3]!
       return json({ order: [id], posts: { [id]: { id, channel_id: CHAT, user_id: MEMBER, message: '', create_at: 0, root_id: '', delete_at: 0, type: '' } } })
+    }
+    if (path === '/v0/auth/me') return json({})
+    if (path === `/v0/inboxes/${AGENTMAIL_INBOX}`) return json({ inbox_id: AGENTMAIL_INBOX })
+    if (path === `/v0/inboxes/${AGENTMAIL_INBOX}/threads`) {
+      const after = new URL(url).searchParams.get('after') ?? ''
+      const threads = [...new Map(mail.map(item => [item.thread_id, item])).values()]
+        .filter(item => !after || Date.parse(item.timestamp) > Date.parse(after))
+      return json({ threads: threads.map(item => ({ inbox_id: AGENTMAIL_INBOX, thread_id: item.thread_id, labels: [], timestamp: item.timestamp,
+        senders: [item.from], recipients: [AGENTMAIL_INBOX], last_message_id: item.message_id, message_count: 1, size: 1,
+        updated_at: item.timestamp, created_at: item.timestamp, subject: item.subject ?? null })) })
+    }
+    if (path.startsWith('/v0/threads/')) {
+      const threadId = path.slice('/v0/threads/'.length)
+      const items = mail.filter(item => item.thread_id === threadId)
+      return json({ inbox_id: AGENTMAIL_INBOX, thread_id: threadId, labels: [], timestamp: items.at(-1)?.timestamp ?? '', last_message_id: items.at(-1)?.message_id ?? '',
+        message_count: items.length, size: 1, updated_at: items.at(-1)?.timestamp ?? '', created_at: items[0]?.timestamp ?? '', count: items.length, messages: items })
+    }
+    if (/^\/v0\/inboxes\/[^/]+\/messages\/[^/]+\/reply$/.test(path) && init?.method === 'POST') {
+      sentReplies.push({ body: JSON.parse(String(init.body)), key: new Headers(init.headers).get('Idempotency-Key') ?? undefined })
+      return json({ message_id: `out_${sentReplies.length}`, thread_id: 'th_reply' })
     }
     return new Response('{}', { status: 404 })
   }))
@@ -232,8 +263,8 @@ beforeEach(async () => {
   runtime = new Runtime(ctx, testMachine({ stateDir: directory }), restarts)
   await runtime.ready
   // Source kinds are normally registered by plugins that are not loaded in unit tests.
-  runtime.sources.register(mattermostKind); runtime.sources.register(githubKind)
-  runtime.store.saveSettings({ ...runtime.store.settings(), policy: { ...runtime.store.settings().policy, sources: { mattermost: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChannel: CHAT }, github: { allowed: [{ id: 'alice' }] } } }, eval: { ...runtime.store.settings().eval, mode: 'auto' }, sources: { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT() } }, mattermost: { enabled: true, config: { url: 'https://mattermost.test', token: 'test-token', channels: [{ channelId: CHAT, listen: 'all' }], directMessages: true } } } })
+  runtime.sources.register(mattermostKind); runtime.sources.register(githubKind); runtime.sources.register(agentmailKind)
+  runtime.store.saveSettings({ ...runtime.store.settings(), policy: { ...runtime.store.settings().policy, sources: { mattermost: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChannel: CHAT }, github: { allowed: [{ id: 'alice' }] }, agentmail: { allowed: [{ id: SENDER, name: 'Bob' }] } } }, eval: { ...runtime.store.settings().eval, mode: 'auto' }, sources: { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT() } }, mattermost: { enabled: true, config: { url: 'https://mattermost.test', token: 'test-token', channels: [{ channelId: CHAT, listen: 'all' }], directMessages: true } }, agentmail: { enabled: true, config: { apiKey: 'test-key', inboxId: AGENTMAIL_INBOX } } } })
   deliveries.mockClear()
 })
 afterEach(async () => { expect(controller.prompt).not.toHaveBeenCalled(); await runtime?.stop(); vi.restoreAllMocks(); rmSync(directory, { recursive: true, force: true }) })
@@ -260,6 +291,24 @@ it('relays an explicit member mention as a candidate and creates the ticket, ack
     thread: `mattermost:${CHAT}:post_1`, text: trigger.text }) })
   expect(first.trigger).not.toHaveProperty('read')
   expect(await route({ kind: 'accept', trigger_id: trigger.id, title: 'again', worktree_name: worktreeName, acknowledgement: 'x' })).toMatchObject({ ticket: { ticket_id: ticket.id } })
+})
+
+it('relays an email to the AgentMail inbox as a candidate and creates the ticket, acknowledgement and worker on accept', async () => {
+  const trigger = agentmail('1', '修复登录回归')
+  await receive(trigger)
+  const { trigger: received, ticket, sessionId } = await acceptedTicket(trigger)
+  const candidate = relays(runtime.masterId).find(item => item.kind === 'candidate')!
+  expect(candidate).toMatchObject({ strength: 'explicit', trigger_id: received.id })
+  expect(ticket).toMatchObject({ mandate: { basis: expect.objectContaining({ via: 'addressed', source: 'agentmail', sender: 'Bob', addressed: 'direct', row: 'inbox' }) },
+    origin: expect.objectContaining({ triggerId: received.id }) })
+  expect(Object.fromEntries(runtime.ticketEnvironment(ticket).map(variable => [variable.key, variable.value])))
+    .toMatchObject({ DSH_SUPERAGENT_AGENTMAIL_INBOX: AGENTMAIL_INBOX, DSH_SUPERAGENT_AGENTMAIL_FROM: SENDER })
+  expect(runtime.store.threads.get('agentmail:th_1')?.subscriptions).toEqual([ticket.id])
+  expect(runtime.store.replyStatus(key('ack', received.id))).toBe('sent')
+  // The acknowledgement went out as an email reply in the message's thread, keyed idempotently by the ack's own id.
+  expect(runtime.store.receipts.get(key('ack', received.id))).toMatchObject({ channel: expect.objectContaining({ source: 'agentmail', address: expect.objectContaining({ inboxId: AGENTMAIL_INBOX, threadId: 'th_1', messageId: 'msg_1' }) }), status: 'sent' })
+  expect(sentReplies).toEqual([{ body: { text: '收到，修复回归。' }, key: key('ack', received.id) }])
+  expect(await route({ kind: 'accept', trigger_id: received.id, title: 'again', worktree_name: worktreeName, acknowledgement: 'x' })).toMatchObject({ ticket: { ticket_id: ticket.id } })
 })
 
 it('fans a person\'s later thread message out to the live worker as context and tells the orchestrator, without an Eval', async () => {

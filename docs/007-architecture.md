@@ -372,6 +372,11 @@ Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsub
 | `src/sources/mattermost-loops.ts` | Циклы Mattermost: потребитель событий WebSocket, имена каналов и опрос подписанных тредов |
 | `src/sources/mattermost-channel.ts` | Канал Mattermost: ответы в треде через REST, `sent` или `gone` |
 | `src/sources/mattermost-read.ts` | Чтения `mattermost/` поста Триггера, его корня и треда, и `mattermostThreadContext`, который даёт их оценкам |
+| `src/sources/agentmail.ts` | Вид AgentMail и точка входа плагина, экспортируемая как `./agentmail-watch` |
+| `src/sources/agentmail-trigger.ts` | Письма AgentMail как Триггеры: адрес отправителя, тред, `In-Reply-To` и детерминированный ID |
+| `src/sources/agentmail-loops.ts` | Цикл AgentMail: опрос обновлённых тредов ящика и курсоры последних писем |
+| `src/sources/agentmail-channel.ts` | Канал AgentMail: ответ в тред письма с `Idempotency-Key`, `sent` или `gone` |
+| `src/sources/agentmail-read.ts` | Чтения треда письма постранично и `agentmailThreadContext`, который даёт их оценкам |
 | `src/sources/admission-context.ts` | Ограниченное окно, из которого начинается оценка: первые страницы Треда Триггера, читаемые через его вид, и сообщения вокруг Триггера |
 | `src/client/index.tsx` | Точка входа клиентского плагина: запись в боковой панели, основная панель и страница в Plugin Manager DeepSeek Harness |
 | `src/client/app.tsx` | Панель: шапка, поиск, глоссарий, вкладки и страница текущего маршрута |
@@ -396,7 +401,7 @@ Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsub
 | `src/client/locales.ts` | Весь текст на обоих языках и глоссарий [001 Domain model](001-domain.md) |
 | `src/client/client.css`, `css.d.ts` | Таблица стилей панели, загружаемая как текст |
 
-`src/sources/github.ts` и `src/sources/mattermost.ts` также являются точками входа двух плагинов Источников, собираемыми через `tsdown.config.ts` и экспортируемыми в `package.json` как `./github-watch` и `./mattermost-watch`. `cordis.patch.yml` бандла вставляет три плагина, с Mattermost отключённым.
+`src/sources/github.ts`, `src/sources/mattermost.ts` и `src/sources/agentmail.ts` также являются точками входа трёх плагинов Источников, собираемыми через `tsdown.config.ts` и экспортируемыми в `package.json` как `./github-watch`, `./mattermost-watch` и `./agentmail-watch`. `cordis.patch.yml` бандла вставляет четыре плагина, с Mattermost и AgentMail отключёнными.
 
 ## Tests
 
@@ -407,6 +412,7 @@ Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsub
 | `tests/policy.spec.ts` | Область Источника, шлюз, таблица приёма, перепроверка Мандата, версия Политики, миграции настроек и исходы оценки |
 | `tests/registry.spec.ts` | `SourceRegistry`: экземпляры, проверка, части Политики, Каналы и контекст Треда |
 | `tests/sources.spec.ts` | Источники Feishu и GitHub на `SourceContext`: трансляция, опросы и позиции чтения, правила pull request'ов, здоровье |
+| `tests/agentmail.spec.ts` | Источник AgentMail: трансляция писем, опрос ящика и курсоры, канал ответов с идемпотентностью, части политики |
 | `tests/commands.spec.ts` | Вызовы CLI как аккаунты развёртывания, ответы Каналов и вызовы GitHub с ограничением по репозиторию |
 | `tests/github-read.spec.ts` | Чтения GitHub |
 | `tests/admission-context.spec.ts` | Окно Треда оценок |

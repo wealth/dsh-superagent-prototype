@@ -30,6 +30,7 @@ interface Deployment extends Machine {
     noreply: string;
   };
   mattermost?: MattermostBot;
+  agentmail?: AgentmailAccount;
 }
 /** A verified Mattermost bot: the server it talks to, and the account the bot posts as. */
 interface MattermostBot {
@@ -38,11 +39,21 @@ interface MattermostBot {
   botId: string;
   username: string;
 }
+/** A verified AgentMail account: the key it reads with, and the inbox address the Source watches. */
+interface AgentmailAccount {
+  apiKey: string;
+  inboxId: string;
+}
 /**
  * Verifies the Mattermost bot token against the server and returns the bot account it belongs to.
  * The token is stored in the Source configuration and used only by the Mattermost Source's own requests.
  */
 declare function resolveMattermostBot(machine: Machine, mattermost: unknown, fetcher?: typeof fetch): Promise<MattermostBot | undefined>;
+/**
+ * Verifies the AgentMail key against the account and that the named inbox exists, returning the account the Source reads with.
+ * The key is stored in the Source configuration and used only by the AgentMail Source's own requests.
+ */
+declare function resolveAgentmail(machine: Machine, agentmail: unknown, fetcher?: typeof fetch): Promise<AgentmailAccount | undefined>;
 //#endregion
 //#region src/core/reasons.d.ts
 /**
@@ -731,4 +742,4 @@ interface Repositories {
 //#region src/core/intake.d.ts
 type ReceiveResult = 'stored' | 'duplicate' | 'filtered';
 //#endregion
-export { settled as $, MandateBasis as A, TicketEndBy as B, Decision as C, Follow as D, Execution as E, Thread as F, followupOwners as G, TicketOutcome as H, ThreadFact as I, latestReport as J, isoTime as K, ThreadFacts as L, ReportState as M, Strength as N, FollowupRecords as O, Text as P, runningAssignment as Q, ThreadRef as R, ChannelRef as S, Evaluation as T, Trigger as U, TicketInput as V, TriggerDisposition as W, reached as X, liveTicket as Y, readUntil as Z, ActorRef as _, DomainEvent as a, ReasonCode as at, AssignmentState as b, GateResult as c, Config as ct, Policy as d, MattermostBot as dt, threadKey as et, ReplyStatus as f, resolveMattermostBot as ft, AcceptMode as g, SourceScope as h, Candidate as i, Reason as it, PolicyEffect as j, Mandate as k, OutboundMessage as l, Deployment as lt, ScopeResult as m, AssessmentOutcome as n, waitsForPerson as nt, DomainEvents as o, reasonText as ot, Repositories as p, latestAssignment as q, Assessor as r, REASONS as rt, Executor as s, said as st, ReceiveResult as t, ticketOutcome as tt, Outbox as u, DeploymentConfig as ut, AdmissionCell as v, DecisionKind as w, Attention as x, Assignment as y, Ticket as z };
+export { settled as $, MandateBasis as A, TicketEndBy as B, Decision as C, Follow as D, Execution as E, Thread as F, followupOwners as G, TicketOutcome as H, ThreadFact as I, latestReport as J, isoTime as K, ThreadFacts as L, ReportState as M, Strength as N, FollowupRecords as O, Text as P, runningAssignment as Q, ThreadRef as R, ChannelRef as S, Evaluation as T, Trigger as U, TicketInput as V, TriggerDisposition as W, reached as X, liveTicket as Y, readUntil as Z, ActorRef as _, DomainEvent as a, ReasonCode as at, AssignmentState as b, GateResult as c, AgentmailAccount as ct, Policy as d, DeploymentConfig as dt, threadKey as et, ReplyStatus as f, MattermostBot as ft, AcceptMode as g, SourceScope as h, Candidate as i, Reason as it, PolicyEffect as j, Mandate as k, OutboundMessage as l, Config as lt, ScopeResult as m, resolveMattermostBot as mt, AssessmentOutcome as n, waitsForPerson as nt, DomainEvents as o, reasonText as ot, Repositories as p, resolveAgentmail as pt, latestAssignment as q, Assessor as r, REASONS as rt, Executor as s, said as st, ReceiveResult as t, ticketOutcome as tt, Outbox as u, Deployment as ut, AdmissionCell as v, DecisionKind as w, Attention as x, Assignment as y, Ticket as z };

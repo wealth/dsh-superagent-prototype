@@ -98,7 +98,8 @@ export class Runtime extends Service implements SourceHost {
       const setup = this.setup = new Setup({ context: ctx, machine, lifetime: this.lifetime, restart })
       const deployed = () => setup.configured()
         ? environmentOf({ deployment: setup.deployment, sources: this.sources, settings: store.settings() }) : undefined
-      const prompts = this.prompts = new Prompts(store, () => machine.promptMaxChars.get(), deployed, () => setup.configured() && !!setup.deployment.mattermost)
+      const prompts = this.prompts = new Prompts(store, () => machine.promptMaxChars.get(), deployed, () => setup.configured() && !!setup.deployment.mattermost,
+      () => setup.configured() && !!setup.deployment.agentmail)
       const masterId = this.masterId = store.get(KV.runtime.masterId) ?? `orchestrator-${key(machine.stateDir)}`
       store.set(KV.runtime.masterId, masterId)
       const commands = this.commands = new Commands(() => setup.deployment, setup.commandEnvironment, this.lifetime)
@@ -156,7 +157,7 @@ export class Runtime extends Service implements SourceHost {
         health: this.runtimeHealth, lifetime: this.lifetime, configured: () => setup.configured(), closing: () => this.closing() })
       this.sourceDeps = { store, engine, outbox, commands, sources, get ready() { return runtime.ready },
         get deployment() { return setup.deployment }, configured: () => setup.configured(),
-        get setupProblem() { return setup.problem }, get mattermostProblem() { return setup.mattermostProblem }, receive: trigger => passes.receive(trigger) }
+        get setupProblem() { return setup.problem }, get mattermostProblem() { return setup.mattermostProblem }, get agentmailProblem() { return setup.agentmailProblem }, receive: trigger => passes.receive(trigger) }
       this.toolHost = { context: ctx, engine, store, prompts, sessions, settings: this.settings, assessor, resources,
         get github() { return runtime.context({ kind: 'github', health: ['github'] }) },
         requestPass: () => { passes.request() }, sendReplies: () => outbox.sent(),
@@ -217,7 +218,7 @@ export class Runtime extends Service implements SourceHost {
     const { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, setup, passes } = this
     return { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks,
       get deployment() { return setup.deployment },
-      get setupProblem() { return setup.problem }, get mattermostProblem() { return setup.mattermostProblem },
+      get setupProblem() { return setup.problem }, get mattermostProblem() { return setup.mattermostProblem }, get agentmailProblem() { return setup.agentmailProblem },
       configured: () => setup.configured(), links: () => runtime.links(), ticketEnvironment: ticket => runtime.ticketEnvironment(ticket),
       checkSetup: () => { setup.check() }, requestPass: () => { passes.request() }, models: () => this.ctx.sessionController.modelCatalog() }
   }

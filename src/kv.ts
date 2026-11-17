@@ -40,6 +40,8 @@ export const KV = {
   sources: { labels: family<Record<string, string>, [source: string]>('source-labels:') },
   /** Mattermost Source: which channels are direct messages, and per-polled-thread seen post IDs. */
   mattermost: { channels: record<Record<string, boolean>>('mattermost-channels'), seen: family<string[], [thread: string]>('thread-seen-mm:') },
+  /** AgentMail Source: the inbox poll cursor, and the last message id each read thread ended with. */
+  agentmail: { since: record<string>('agentmail-since'), thread: family<{ lastMessageId: string; lastAt: string }, [thread: string]>('agentmail-thread:') },
   /**
    * GitHub Source: notification cursor and pending retries; per-Issue/PR read cursor shared by notification and polled reads;
    * per-stream cursor, start times by kind, and ETag; default-branch CI state; and per-PR CI fingerprint and revision (`revision`

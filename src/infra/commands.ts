@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process'
 import { basename } from 'node:path'
 import { promisify } from 'node:util'
 import { z } from 'zod'
-import type { Deployment, MattermostBot } from '../deployment.ts'
+import type { Deployment, AgentmailAccount, MattermostBot } from '../deployment.ts'
 
 const exec = promisify(execFile)
 const TIMEOUT_MS = 90_000
@@ -95,6 +95,12 @@ export class Commands {
     const bot = this.deployment.mattermost
     if (!bot) throw new Error('The Mattermost Source has no working bot')
     return bot
+  }
+  /** The AgentMail account of the current deployment, whose key only the AgentMail Source's own requests use. */
+  agentmail(): AgentmailAccount {
+    const account = this.deployment.agentmail
+    if (!account) throw new Error('The AgentMail Source has no working account')
+    return account
   }
   /** Runs `git` on PATH using the agent's isolated git environment and credential helper. */
   async git(args: string[], cwd: string): Promise<string> { return this.run('git', args, cwd) }

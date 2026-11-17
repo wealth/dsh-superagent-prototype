@@ -13,6 +13,7 @@ import { Store } from '../../src/app/store.ts'
 import { SettingsSchema } from '../../src/policy.ts'
 import { mattermostKind, mattermostTrigger } from '../../src/sources/mattermost.ts'
 import { githubKind } from '../../src/sources/github.ts'
+import { agentmailKind, agentmailTrigger, type AgentmailMessage } from '../../src/sources/agentmail.ts'
 import { Commands } from '../../src/infra/commands.ts'
 import { credentialHelper, workerGitConfig } from '../../src/infra/environment.ts'
 import type { Trigger } from '../../src/core/index.ts'
@@ -21,10 +22,34 @@ import { testMachine } from './deployment.ts'
 /** Posts the fake Mattermost server received through the bot, in order. */
 export const sentPosts: Record<string, unknown>[] = []
 /** While set, the fake Mattermost server refuses posts with an internal error. */
-export const failure = { posts: false }
+export const failure = { posts: false, agentmail: false }
 export const MEMBER = 'user0000000000000000000001'
 export const CHAT = 'chan0000000000000000000001'
 const BOT_ID = 'botuser0000000000000000001'
+export const AGENTMAIL_INBOX = 'agent@agentmail.test'
+export const SENDER = 'bob@example.test'
+/** The fake AgentMail inbox, and the replies the fake API received, in order. */
+export const mail: AgentmailMessage[] = []
+export const sentReplies: { body: unknown; key?: string }[] = []
+const mailAt = (id: string) => new Date(Date.parse('2026-09-09T00:00:00Z') + Number(id.replace(/\D/g, '') || 0) * 1000).toISOString()
+
+/** Builds an AgentMail message; `msg_<id>` from `SENDER` in its own thread unless `thread_id` names one. */
+export function mailOf(id: string, text: string, overrides: Partial<AgentmailMessage> = {}): AgentmailMessage {
+  return { message_id: `msg_${id}`, thread_id: `th_${id}`, from: SENDER, to: [AGENTMAIL_INBOX],
+    timestamp: mailAt(id), text, labels: [], ...overrides }
+}
+
+/** The newest timestamp of a fake thread, and its newest message. */
+function latest(threadId: string): string { return mailAt(threadId.replace(/^th_/, '')) }
+function latestMessage(threadId: string): AgentmailMessage {
+  const items = mail.filter(item => item.thread_id === threadId)
+  return items.reduce((newest, item) => Date.parse(item.timestamp) > Date.parse(newest.timestamp) ? item : newest)
+}
+
+/** Builds an AgentMail Trigger the way the Source's poll loop would produce one. */
+export function agentmail(id: string, text: string, overrides: Partial<AgentmailMessage> = {}): Trigger {
+  return agentmailTrigger(mailOf(id, text, overrides), AGENTMAIL_INBOX)!
+}
 
 /**
  * Build a Mattermost mention trigger from Alice in `CHAN`, using the digits in `id` as the timestamp offset in seconds.
@@ -179,6 +204,29 @@ export async function startRuntime(seed?: (store: Store) => void) {
     if (path === '/api/v4/users/me') return json({ id: 'botuser0000000000000000001', username: 'dsh-bot', is_bot: true })
     if (path === '/api/v4/users/ids') return json([{ id: MEMBER, username: 'Alice' }])
     if (path.startsWith('/api/v4/channels/') && path.endsWith('/members')) return json([{ user_id: MEMBER, delete_at: 0 }])
+    if (path === '/v0/auth/me') return failure.agentmail ? new Response('{}', { status: 500 }) : json({})
+    if (path === `/v0/inboxes/${AGENTMAIL_INBOX}`) return json({ inbox_id: AGENTMAIL_INBOX })
+    if (path === `/v0/inboxes/${AGENTMAIL_INBOX}/threads`) {
+      const after = new URL(url).searchParams.get('after') ?? ''
+      const updated = [...new Map(mail.map(item => [item.thread_id, item])).values()]
+        .filter(item => !after || Date.parse(latest(item.thread_id)) > Date.parse(after))
+      return json({ threads: updated.map(item => ({ inbox_id: AGENTMAIL_INBOX, thread_id: item.thread_id, labels: [], timestamp: latest(item.thread_id),
+        senders: [item.from], recipients: [AGENTMAIL_INBOX], last_message_id: latestMessage(item.thread_id).message_id,
+        message_count: mail.filter(member => member.thread_id === item.thread_id).length, size: 1, updated_at: latest(item.thread_id),
+        created_at: item.timestamp, subject: item.subject ?? null })) })
+    }
+    if (path.startsWith('/v0/threads/')) {
+      const threadId = path.slice('/v0/threads/'.length)
+      return json({ inbox_id: AGENTMAIL_INBOX, thread_id: threadId, labels: [], timestamp: latest(threadId),
+        last_message_id: latestMessage(threadId).message_id, message_count: mail.filter(item => item.thread_id === threadId).length,
+        size: 1, updated_at: latest(threadId), created_at: mailAt(threadId.replace(/^th_/, '')), count: mail.filter(item => item.thread_id === threadId).length,
+        messages: mail.filter(item => item.thread_id === threadId) })
+    }
+    if (/^\/v0\/inboxes\/[^/]+\/messages\/[^/]+\/reply$/.test(path) && init?.method === 'POST') {
+      if (failure.agentmail) return new Response('{}', { status: 500 })
+      sentReplies.push({ body: JSON.parse(String(init.body)), key: new Headers(init.headers).get('Idempotency-Key') ?? undefined })
+      return json({ message_id: `out_${sentReplies.length}`, thread_id: 'th_reply' })
+    }
     return new Response('{}', { status: 404 })
   }))
   vi.spyOn(Commands.prototype, 'git').mockResolvedValue('')
@@ -285,16 +333,18 @@ export async function startRuntime(seed?: (store: Store) => void) {
   for (const [name, service] of Object.entries(services)) ctx.reflect.provide(name, service)
   for (const cli of [AGENT]) writeFileSync(cli, '#!/bin/sh\n', { mode: 0o755 })
   const seeded = new Store(join(directory, 'orchestrator.sqlite'))
-  const sources = { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT } }, mattermost: { enabled: true, config: { url: MM_URL, token: 'test-token' } } }
+  const sources = { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT } }, mattermost: { enabled: true, config: { url: MM_URL, token: 'test-token' } },
+    agentmail: { enabled: true, config: { apiKey: 'test-key', inboxId: AGENTMAIL_INBOX } } }
   seeded.saveSettings(SettingsSchema.parse({ ...seeded.settings(), sources }))
   seed?.(seeded)
   seeded.close()
   const runtime = new Runtime(ctx, testMachine({ stateDir: directory }), vi.fn())
   await runtime.ready
-  runtime.sources.register(mattermostKind); runtime.sources.register(githubKind)
+  runtime.sources.register(mattermostKind); runtime.sources.register(githubKind); runtime.sources.register(agentmailKind)
   const settings = runtime.store.settings()
   runtime.store.saveSettings({ ...settings, eval: { ...settings.eval, mode: 'auto' },
-    policy: { ...settings.policy, sources: { mattermost: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChannel: CHAT }, github: { allowed: [{ id: 'alice' }] } } },
+    policy: { ...settings.policy, sources: { mattermost: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChannel: CHAT }, github: { allowed: [{ id: 'alice' }] },
+      agentmail: { allowed: [{ id: SENDER, name: 'Bob' }] } } },
     sources: { ...sources, mattermost: { enabled: true, config: { url: MM_URL, token: 'test-token', channels: [{ channelId: CHAT, listen: 'all' }], directMessages: true } } } })
   deliveries.mockClear()
 

@@ -13,6 +13,7 @@ export const HEALTH_TEXT = {
   sourceOff: 'Off',
   mattermostUnset: 'The Source is on, and its Mattermost server or bot token is not set',
   mattermostBotMissing: 'Waiting for the Mattermost bot',
+  agentmailUnset: 'The Source is on, and its AgentMail key or inbox is not set',
   pollFailures: '{count} consecutive failed polls; last: {error}',
 } as const
 export type HealthCode = keyof typeof HEALTH_TEXT

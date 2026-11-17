@@ -1,4 +1,4 @@
-import { F as Thread, I as ThreadFact, R as ThreadRef, S as ChannelRef, U as Trigger, dt as MattermostBot, h as SourceScope, l as OutboundMessage, lt as Deployment, m as ScopeResult, t as ReceiveResult, v as AdmissionCell, z as Ticket } from "./intake-D-lND9sk.js";
+import { F as Thread, I as ThreadFact, R as ThreadRef, S as ChannelRef, U as Trigger, ct as AgentmailAccount, ft as MattermostBot, h as SourceScope, l as OutboundMessage, m as ScopeResult, t as ReceiveResult, ut as Deployment, v as AdmissionCell, z as Ticket } from "./intake-8_Cr7w_z.js";
 import { Context } from "@deepseek-ai/cordis";
 import { z } from "zod";
 import { DatabaseSync } from "node:sqlite";
@@ -39,6 +39,8 @@ declare class Commands {
   private path;
   /** The Mattermost bot of the current deployment, whose token only the Mattermost Source's own requests use. */
   mattermost(): MattermostBot;
+  /** The AgentMail account of the current deployment, whose key only the AgentMail Source's own requests use. */
+  agentmail(): AgentmailAccount;
   /** Runs `git` on PATH using the agent's isolated git environment and credential helper. */
   git(args: string[], cwd: string): Promise<string>;
 }
@@ -50,217 +52,6 @@ declare const ADMISSION_OPTIONS: {
   readonly unlistedUnaddressed: readonly ["inferred", "ignore"];
 };
 type AdmissionRow = { [C in AdmissionCell]?: typeof ADMISSION_OPTIONS[C][number]; };
-//#endregion
-//#region src/sources/kind.d.ts
-interface Localized {
-  zh: string;
-  en: string;
-  ru: string;
-}
-/** `advanced` folds a rarely changed field (such as a polling tunable) behind the card's Advanced section. */
-interface FieldBase {
-  key: string;
-  label: Localized;
-  hint?: Localized;
-  advanced?: true;
-}
-/**
- * Configuration field specification; `rows` edits a list of records keyed by its first column, `choose` picks from
- * resolved source labels, and `fact` displays a read-only value from `facts`.
- */
-type FieldSpec = FieldBase & {
-  type: 'switch';
-} | FieldBase & {
-  type: 'select';
-  options: {
-    value: string;
-    label: Localized;
-  }[];
-} | FieldBase & {
-  type: 'number';
-  min: number;
-  max: number;
-} | FieldBase & {
-  type: 'text';
-  pattern?: string;
-  readonly?: boolean;
-  choose?: Localized;
-} | FieldBase & {
-  type: 'fact';
-  settings?: 'deployment';
-} | FieldBase & {
-  type: 'rows';
-  columns: ({
-    key: string;
-    label: Localized;
-    type: 'text';
-    pattern?: string;
-    optional?: boolean;
-    choose?: Localized;
-    refresh?: Localized;
-  } | {
-    key: string;
-    label: Localized;
-    type: 'select';
-    options: {
-      value: string;
-      label: Localized;
-    }[];
-  })[];
-};
-interface VariableSpec {
-  key: string;
-  description: Localized;
-}
-interface EnvironmentInput<C> {
-  deployment: Deployment;
-  config: C;
-  trigger?: Trigger;
-}
-interface AdmissionRowView {
-  id: string;
-  label: Localized | string;
-  note: Localized;
-  cells: {
-    listedUnaddressed: boolean;
-    unlistedAddressed: boolean;
-    unlistedUnaddressed: boolean;
-  };
-}
-/** Policy extension for a source kind, defining allowed senders, admission table rows, and optional external roster sync. */
-interface SourcePolicyPart<P extends Record<string, unknown>> {
-  /** Validates the Source's part of the Policy, including `allowed` (senders who may originate work). */
-  schema: z.ZodType<P>;
-  /** Form fields of the policy part; the first is `allowed`. */
-  fields: FieldSpec[];
-  /** Describes what the Source marks as addressed to the agent, which an allowed sender's explicit request requires. */
-  explicit: Localized;
-  /** Fallback display labels for unlisted human or bot senders when raw sender IDs are not human-readable. */
-  unnamed?: {
-    person: Localized;
-    bot: Localized;
-  };
-  /** Receiving scopes of the Policy's admission table under `config` (matching `scope().row`); kinds without `rows` use the table's defaults. */
-  rows?(config: Record<string, unknown>): AdmissionRowView[];
-  /** Optional external roster sync (such as chat members); `ready` reports whether `part` names a target to refresh from. */
-  sync?: {
-    label: Localized;
-    ready(part: P): boolean;
-    run(host: SourceHost, part: P, signal: AbortSignal): Promise<P>;
-  };
-}
-/** UI link for a channel address; `triggerId` names the Trigger whose own deep link is preferred when available. */
-interface ChannelLink {
-  url: string;
-  label: Localized;
-  triggerId?: string;
-}
-type ChannelLinks = Partial<Pick<Deployment, 'repository' | 'mattermost'>>;
-/** Outbound messaging adapter for a source kind's threads. */
-interface SourceChannel<C> {
-  /** Whether a reply may still go to `address`; without it, every address may receive replies. */
-  allowed?(address: Record<string, string>, config: C): boolean;
-  /**
-   * Sends a message idempotently by ID; returns `'gone'` when the target conversation no longer accepts replies.
-   * @throws when delivery failed but may succeed on a later retry.
-   */
-  send(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<'sent' | 'gone'>;
-  /** Returns the URL and label for `address`; `url` is empty when `links` lack the required deployment info. */
-  link(address: Record<string, string>, links: ChannelLinks): ChannelLink;
-}
-/** Normalized message returned by thread context readers; `bot` marks a non-human sender whose message can never authorize work on its own (at most an inferred candidate). */
-interface ContextMessage {
-  id: string;
-  from: string;
-  at: string;
-  text: string;
-  bot?: true;
-  deleted?: true;
-  reply_to?: string;
-  url?: string;
-  path?: string;
-  line?: number;
-}
-type ContextPartName = 'thread' | 'root' | 'parent';
-interface ContextPart {
-  messages: ContextMessage[];
-  next?: string | undefined;
-  body: Record<string, unknown>;
-  status?: string;
-}
-/** Bounded thread context reader used by assessments to inspect messages and images around a trigger. */
-interface ThreadContext<C> {
-  /** The ID of the Trigger's own message among the messages of its Thread. */
-  messageId(trigger: Trigger): string;
-  /** Reads a page of thread messages (`thread`, first page when `cursor` is omitted), the topic root (`root`), or the replied-to message (`parent`). */
-  read(commands: Commands, trigger: Trigger, part: ContextPartName, cursor: string | undefined, config: C): Promise<ContextPart>;
-  /** Extracts image keys from message text that `image` can read; omitted for kinds without image support. */
-  images?(text: string): string[];
-  /** Reads one image of a message in the Trigger's Thread as an attachment for `agent`. */
-  image?(agent: Agent, commands: Commands, trigger: Trigger, message: {
-    id: string;
-    text: string;
-  }, key: string, stateDir: string, signal: AbortSignal): Promise<unknown>;
-}
-interface TriggerContext {
-  readonly messageId: string;
-  read(commands: Commands, part: ContextPartName, cursor?: string): Promise<ContextPart>;
-  images(text: string): string[];
-  /** @throws for a kind without image support. */
-  image(agent: Agent, commands: Commands, message: {
-    id: string;
-    text: string;
-  }, key: string, stateDir: string, signal: AbortSignal): Promise<unknown>;
-}
-/** Pluggable source kind descriptor registered with SourceRegistry. */
-interface SourceKind<C extends Record<string, unknown> = Record<string, unknown>> {
-  /** Stable ID; a default instance with the same ID exists when none is stored. */
-  kind: string;
-  title: Localized;
-  description: Localized;
-  /** Read-only status facts derived from `deployment` (undefined while waiting for setup), keyed by field key. */
-  facts?(deployment: Deployment | undefined): Record<string, Localized | string>;
-  /** Validates stored and submitted configuration and fills defaults. */
-  schema: z.ZodType<C>;
-  fields: FieldSpec[];
-  /** Health entry names owned by this kind under `health[...]`; no other kind or core loop may report them. */
-  health: string[];
-  /** Listening rule for a trigger (or recorded Mandate basis) of this kind; kinds without `scope` listen to everything they produce and observe none of it. */
-  scope?(input: {
-    meta: Record<string, unknown>;
-  }, config: C): ScopeResult;
-  /** Outbound reply adapter; kinds without `channel` produce no replies or channel checks. */
-  channel?: SourceChannel<C>;
-  /** Bounded context reader for assessments; assessments of a kind without `threadContext` read none. */
-  threadContext?: ThreadContext<C>;
-  /** Maps a search query to candidate Thread keys (such as `github:12`) and Trigger search terms (such as a Mattermost post ID). */
-  find?(query: string): {
-    threads: string[];
-    terms: string[];
-  };
-  /** Returns the ID of the Trigger whose message this Trigger replies to, when derivable without a network read. */
-  repliesTo?(trigger: Trigger): string | undefined;
-  /** Policy section for kinds whose senders have their own identity. */
-  policy?: SourcePolicyPart<Record<string, unknown> & {
-    allowed: {
-      id: string;
-      name?: string;
-    }[];
-  }>;
-  /** Rereads display names for row keys (such as chat names), stores the resolved names in `KV.sources.labels(kind)`, and returns them. */
-  refreshLabels?(host: SourceHost, signal?: AbortSignal): Promise<Record<string, string>>;
-  /** Variables the kind registers with the execution environment and how their values are computed. */
-  environment?: {
-    variables: readonly VariableSpec[];
-    values(input: EnvironmentInput<C>): Record<string, string>;
-  };
-}
-interface SourceInstance<C extends Record<string, unknown> = Record<string, unknown>> {
-  id: string;
-  kind: string;
-  enabled: boolean;
-  config: C;
-}
 //#endregion
 //#region src/infra/health.d.ts
 interface HealthEntry {
@@ -707,7 +498,7 @@ declare class SourceRegistry implements SourceScope {
 }
 //#endregion
 //#region src/setup.d.ts
-type SetupPlace = 'deployment' | 'github' | 'mattermost';
+type SetupPlace = 'deployment' | 'github' | 'mattermost' | 'agentmail';
 declare const SETUP_PROBLEMS: {
   readonly foreignFile: readonly ["deployment", "{file} was not written by dsh-superagent; move it, or choose another state directory."];
   readonly gitTooOld: readonly ["deployment", "git does not read the github.com credential configuration dsh-superagent writes; dsh-superagent needs git 2.32 or later."];
@@ -725,6 +516,10 @@ declare const SETUP_PROBLEMS: {
   readonly mattermostUnauthorized: readonly ["mattermost", "The bot token was rejected by the Mattermost server."];
   readonly mattermostNoBot: readonly ["mattermost", "The Mattermost server did not report the bot account."];
   readonly mattermostChannelMissing: readonly ["mattermost", "The bot cannot read the channel {channel}."];
+  readonly agentmailUnset: readonly ["agentmail", "The AgentMail Source names no API key or inbox."];
+  readonly agentmailUnreachable: readonly ["agentmail", "AgentMail did not answer: {output}"];
+  readonly agentmailUnauthorized: readonly ["agentmail", "The AgentMail API key was rejected."];
+  readonly agentmailInboxMissing: readonly ["agentmail", "The inbox {inbox} does not exist under this AgentMail account."];
 };
 type SetupCode = keyof typeof SETUP_PROBLEMS;
 interface SetupProblem {
@@ -740,92 +535,6 @@ declare module '@deepseek-ai/cordis' {
     /** DSH's agent preset registry selected `agentPreset` for a Session. */
     'agent-preset/selected'(sessionId: string, agentPreset: string): void;
   }
-}
-//#endregion
-//#region src/kv.d.ts
-/** Key of a KV record whose value has type `V`; a plain string represents an untyped key. */
-type Key<V> = string & {
-  readonly __value?: V;
-};
-/** Family of KV records sharing a prefix: callable to build a key from its name parts, and exposing `prefix` for listing. */
-type Family<V, A extends unknown[]> = ((...name: A) => Key<V>) & {
-  readonly prefix: string;
-};
-//#endregion
-//#region src/sources/host.d.ts
-/** Fixed English health templates (`{name}` placeholders); the panel localizes each `code` in the interface language. */
-declare const HEALTH_TEXT: {
-  readonly setupPending: "Waiting for the deployment check";
-  readonly sourceOff: "Off";
-  readonly mattermostUnset: "The Source is on, and its Mattermost server or bot token is not set";
-  readonly mattermostBotMissing: "Waiting for the Mattermost bot";
-  readonly pollFailures: "{count} consecutive failed polls; last: {error}";
-};
-type HealthCode = keyof typeof HEALTH_TEXT;
-type Health = {
-  state: 'starting' | 'ready' | 'paused' | 'error';
-  detail: string;
-  at?: string;
-  code?: HealthCode;
-  values?: Record<string, string>;
-};
-interface SourceHost {
-  readonly sources: SourceRegistry;
-  /** Returns the context for one Source kind; its `report` writes only the health entries declared by the kind. */
-  context(kind: {
-    kind: string;
-    health: readonly string[];
-  }): SourceContext;
-}
-/** Display label, URL, and facts (`null` removes a fact) that a Source publishes on a Thread. */
-interface ThreadDescription {
-  label?: string;
-  url?: string;
-  facts?: Record<string, ThreadFact | null>;
-}
-/** Application capabilities exposed to a Source kind for reading state, ingesting triggers, managing threads/tickets, and reporting health. */
-interface SourceContext {
-  readonly deployment: Deployment;
-  readonly commands: Commands;
-  readonly ready: Promise<void>;
-  /** True once setup resolved the repository and accounts; Sources poll only then. */
-  configured(): boolean;
-  /** Setup problem keeping this Source's account from running; only the Mattermost bot check reports one. */
-  readonly problem?: SetupProblem | undefined;
-  /** Returns a Source's configuration while enabled, or undefined while disabled or uninstalled. */
-  config<C extends Record<string, unknown>>(kind: string): C | undefined;
-  /** Ingests a trigger into the Engine and schedules the next evaluation pass; callers should await completion before advancing read cursors. */
-  receive(trigger: Trigger): ReceiveResult | Promise<ReceiveResult>;
-  atomic<T>(work: () => T): T;
-  /** Source-scoped KV records (such as read cursors); setting `undefined` removes an entry. */
-  state: {
-    get<V>(key: Key<V>): V | undefined;
-    set<V>(key: Key<V>, value: V | undefined): void;
-    keys<V>(family: Family<V, never>): Key<V>[];
-  };
-  threads: {
-    get(key: string): Thread | undefined;
-    subscribed(source: string): Thread[];
-    describe(key: string, description: ThreadDescription): void;
-    /** Sets or removes (`undefined`) keys in a Thread's `meta` after rereading it; a missing Thread is left alone. */
-    patch(key: string, meta: Record<string, unknown>): void;
-  };
-  tickets: {
-    get(id: string): Ticket | undefined;
-    /** Open tickets, newest first. */
-    open(): Ticket[];
-    /** Binds an open ticket to follow a Source Thread (`own` when opened by the ticket) so the Thread's close, not a ready report, ends the ticket. */
-    bindThread(id: string, thread: ThreadRef, own: boolean): void;
-    /** Reports that a followed Thread closed at `at`; each open ticket following it ends once no `own` Thread remains open and no resumed work is still running. */
-    threadClosed(thread: ThreadRef, outcome: 'merged' | 'closed', at: string): void;
-  };
-  triggers: {
-    get(id: string): Trigger | undefined; /** The newest Trigger on a Thread. */
-    latest(thread: string): Trigger | undefined;
-  };
-  notify(message: OutboundMessage): void;
-  /** Reports the state of one of this kind's declared health entries; throws for undeclared entry names. */
-  report(entry: string, health: Health): void;
 }
 //#endregion
 //#region src/sources/github-pull.d.ts
@@ -951,4 +660,302 @@ declare function pollTicketPulls(ctx: SourceContext, signal?: AbortSignal, round
 /** Polls subscribed Issue and PR Threads not already read in this round; a deleted (410) Issue is still polled within the horizon (costing one read) and does not fail the round. */
 declare function pollThreads(ctx: SourceContext, signal?: AbortSignal, round?: Round): Promise<void>;
 //#endregion
-export { ContextMessage as _, inject as a, pollRound as c, GithubComment as d, commentTrigger as f, ChannelLinks as g, ChannelLink as h, githubKind as i, pollThreads as l, SourceRegistry as m, Retry as n, name as o, SourceContext as p, apply as r, pollFailure as s, GithubConfig as t, pollTicketPulls as u, SourceKind as v };
+//#region src/kv.d.ts
+/** Key of a KV record whose value has type `V`; a plain string represents an untyped key. */
+type Key<V> = string & {
+  readonly __value?: V;
+};
+/** Family of KV records sharing a prefix: callable to build a key from its name parts, and exposing `prefix` for listing. */
+type Family<V, A extends unknown[]> = ((...name: A) => Key<V>) & {
+  readonly prefix: string;
+};
+//#endregion
+//#region src/sources/host.d.ts
+/** Fixed English health templates (`{name}` placeholders); the panel localizes each `code` in the interface language. */
+declare const HEALTH_TEXT: {
+  readonly setupPending: "Waiting for the deployment check";
+  readonly sourceOff: "Off";
+  readonly mattermostUnset: "The Source is on, and its Mattermost server or bot token is not set";
+  readonly mattermostBotMissing: "Waiting for the Mattermost bot";
+  readonly agentmailUnset: "The Source is on, and its AgentMail key or inbox is not set";
+  readonly pollFailures: "{count} consecutive failed polls; last: {error}";
+};
+type HealthCode = keyof typeof HEALTH_TEXT;
+type Health = {
+  state: 'starting' | 'ready' | 'paused' | 'error';
+  detail: string;
+  at?: string;
+  code?: HealthCode;
+  values?: Record<string, string>;
+};
+interface SourceHost {
+  readonly sources: SourceRegistry;
+  /** Returns the context for one Source kind; its `report` writes only the health entries declared by the kind. */
+  context(kind: {
+    kind: string;
+    health: readonly string[];
+  }): SourceContext;
+}
+/** Display label, URL, and facts (`null` removes a fact) that a Source publishes on a Thread. */
+interface ThreadDescription {
+  label?: string;
+  url?: string;
+  facts?: Record<string, ThreadFact | null>;
+}
+/** Application capabilities exposed to a Source kind for reading state, ingesting triggers, managing threads/tickets, and reporting health. */
+interface SourceContext {
+  readonly deployment: Deployment;
+  readonly commands: Commands;
+  readonly ready: Promise<void>;
+  /** True once setup resolved the repository and accounts; Sources poll only then. */
+  configured(): boolean;
+  /** Setup problem keeping this Source's account from running; only the Mattermost bot check reports one. */
+  readonly problem?: SetupProblem | undefined;
+  /** Returns a Source's configuration while enabled, or undefined while disabled or uninstalled. */
+  config<C extends Record<string, unknown>>(kind: string): C | undefined;
+  /** Ingests a trigger into the Engine and schedules the next evaluation pass; callers should await completion before advancing read cursors. */
+  receive(trigger: Trigger): ReceiveResult | Promise<ReceiveResult>;
+  atomic<T>(work: () => T): T;
+  /** Source-scoped KV records (such as read cursors); setting `undefined` removes an entry. */
+  state: {
+    get<V>(key: Key<V>): V | undefined;
+    set<V>(key: Key<V>, value: V | undefined): void;
+    keys<V>(family: Family<V, never>): Key<V>[];
+  };
+  threads: {
+    get(key: string): Thread | undefined;
+    subscribed(source: string): Thread[];
+    describe(key: string, description: ThreadDescription): void;
+    /** Sets or removes (`undefined`) keys in a Thread's `meta` after rereading it; a missing Thread is left alone. */
+    patch(key: string, meta: Record<string, unknown>): void;
+  };
+  tickets: {
+    get(id: string): Ticket | undefined;
+    /** Open tickets, newest first. */
+    open(): Ticket[];
+    /** Binds an open ticket to follow a Source Thread (`own` when opened by the ticket) so the Thread's close, not a ready report, ends the ticket. */
+    bindThread(id: string, thread: ThreadRef, own: boolean): void;
+    /** Reports that a followed Thread closed at `at`; each open ticket following it ends once no `own` Thread remains open and no resumed work is still running. */
+    threadClosed(thread: ThreadRef, outcome: 'merged' | 'closed', at: string): void;
+  };
+  triggers: {
+    get(id: string): Trigger | undefined; /** The newest Trigger on a Thread. */
+    latest(thread: string): Trigger | undefined;
+  };
+  notify(message: OutboundMessage): void;
+  /** Reports the state of one of this kind's declared health entries; throws for undeclared entry names. */
+  report(entry: string, health: Health): void;
+}
+//#endregion
+//#region src/sources/kind.d.ts
+interface Localized {
+  zh: string;
+  en: string;
+  ru: string;
+}
+/** `advanced` folds a rarely changed field (such as a polling tunable) behind the card's Advanced section. */
+interface FieldBase {
+  key: string;
+  label: Localized;
+  hint?: Localized;
+  advanced?: true;
+}
+/**
+ * Configuration field specification; `rows` edits a list of records keyed by its first column, `choose` picks from
+ * resolved source labels, and `fact` displays a read-only value from `facts`.
+ */
+type FieldSpec = FieldBase & {
+  type: 'switch';
+} | FieldBase & {
+  type: 'select';
+  options: {
+    value: string;
+    label: Localized;
+  }[];
+} | FieldBase & {
+  type: 'number';
+  min: number;
+  max: number;
+} | FieldBase & {
+  type: 'text';
+  pattern?: string;
+  readonly?: boolean;
+  choose?: Localized;
+} | FieldBase & {
+  type: 'fact';
+  settings?: 'deployment';
+} | FieldBase & {
+  type: 'rows';
+  columns: ({
+    key: string;
+    label: Localized;
+    type: 'text';
+    pattern?: string;
+    optional?: boolean;
+    choose?: Localized;
+    refresh?: Localized;
+  } | {
+    key: string;
+    label: Localized;
+    type: 'select';
+    options: {
+      value: string;
+      label: Localized;
+    }[];
+  })[];
+};
+interface VariableSpec {
+  key: string;
+  description: Localized;
+}
+interface EnvironmentInput<C> {
+  deployment: Deployment;
+  config: C;
+  trigger?: Trigger;
+}
+interface AdmissionRowView {
+  id: string;
+  label: Localized | string;
+  note: Localized;
+  cells: {
+    listedUnaddressed: boolean;
+    unlistedAddressed: boolean;
+    unlistedUnaddressed: boolean;
+  };
+}
+/** Policy extension for a source kind, defining allowed senders, admission table rows, and optional external roster sync. */
+interface SourcePolicyPart<P extends Record<string, unknown>> {
+  /** Validates the Source's part of the Policy, including `allowed` (senders who may originate work). */
+  schema: z.ZodType<P>;
+  /** Form fields of the policy part; the first is `allowed`. */
+  fields: FieldSpec[];
+  /** Describes what the Source marks as addressed to the agent, which an allowed sender's explicit request requires. */
+  explicit: Localized;
+  /** Fallback display labels for unlisted human or bot senders when raw sender IDs are not human-readable. */
+  unnamed?: {
+    person: Localized;
+    bot: Localized;
+  };
+  /** Receiving scopes of the Policy's admission table under `config` (matching `scope().row`); kinds without `rows` use the table's defaults. */
+  rows?(config: Record<string, unknown>): AdmissionRowView[];
+  /** Optional external roster sync (such as chat members); `ready` reports whether `part` names a target to refresh from. */
+  sync?: {
+    label: Localized;
+    ready(part: P): boolean;
+    run(host: SourceHost, part: P, signal: AbortSignal): Promise<P>;
+  };
+}
+/** UI link for a channel address; `triggerId` names the Trigger whose own deep link is preferred when available. */
+interface ChannelLink {
+  url: string;
+  label: Localized;
+  triggerId?: string;
+}
+type ChannelLinks = Partial<Pick<Deployment, 'repository' | 'mattermost'>>;
+/** Outbound messaging adapter for a source kind's threads. */
+interface SourceChannel<C> {
+  /** Whether a reply may still go to `address`; without it, every address may receive replies. */
+  allowed?(address: Record<string, string>, config: C): boolean;
+  /**
+   * Sends a message idempotently by ID; returns `'gone'` when the target conversation no longer accepts replies.
+   * @throws when delivery failed but may succeed on a later retry.
+   */
+  send(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<'sent' | 'gone'>;
+  /** Returns the URL and label for `address`; `url` is empty when `links` lack the required deployment info. */
+  link(address: Record<string, string>, links: ChannelLinks): ChannelLink;
+}
+/** Normalized message returned by thread context readers; `bot` marks a non-human sender whose message can never authorize work on its own (at most an inferred candidate). */
+interface ContextMessage {
+  id: string;
+  from: string;
+  at: string;
+  text: string;
+  bot?: true;
+  deleted?: true;
+  reply_to?: string;
+  url?: string;
+  path?: string;
+  line?: number;
+}
+type ContextPartName = 'thread' | 'root' | 'parent';
+interface ContextPart {
+  messages: ContextMessage[];
+  next?: string | undefined;
+  body: Record<string, unknown>;
+  status?: string;
+}
+/** Bounded thread context reader used by assessments to inspect messages and images around a trigger. */
+interface ThreadContext<C> {
+  /** The ID of the Trigger's own message among the messages of its Thread. */
+  messageId(trigger: Trigger): string;
+  /** Reads a page of thread messages (`thread`, first page when `cursor` is omitted), the topic root (`root`), or the replied-to message (`parent`). */
+  read(commands: Commands, trigger: Trigger, part: ContextPartName, cursor: string | undefined, config: C): Promise<ContextPart>;
+  /** Extracts image keys from message text that `image` can read; omitted for kinds without image support. */
+  images?(text: string): string[];
+  /** Reads one image of a message in the Trigger's Thread as an attachment for `agent`. */
+  image?(agent: Agent, commands: Commands, trigger: Trigger, message: {
+    id: string;
+    text: string;
+  }, key: string, stateDir: string, signal: AbortSignal): Promise<unknown>;
+}
+interface TriggerContext {
+  readonly messageId: string;
+  read(commands: Commands, part: ContextPartName, cursor?: string): Promise<ContextPart>;
+  images(text: string): string[];
+  /** @throws for a kind without image support. */
+  image(agent: Agent, commands: Commands, message: {
+    id: string;
+    text: string;
+  }, key: string, stateDir: string, signal: AbortSignal): Promise<unknown>;
+}
+/** Pluggable source kind descriptor registered with SourceRegistry. */
+interface SourceKind<C extends Record<string, unknown> = Record<string, unknown>> {
+  /** Stable ID; a default instance with the same ID exists when none is stored. */
+  kind: string;
+  title: Localized;
+  description: Localized;
+  /** Read-only status facts derived from `deployment` (undefined while waiting for setup), keyed by field key. */
+  facts?(deployment: Deployment | undefined): Record<string, Localized | string>;
+  /** Validates stored and submitted configuration and fills defaults. */
+  schema: z.ZodType<C>;
+  fields: FieldSpec[];
+  /** Health entry names owned by this kind under `health[...]`; no other kind or core loop may report them. */
+  health: string[];
+  /** Listening rule for a trigger (or recorded Mandate basis) of this kind; kinds without `scope` listen to everything they produce and observe none of it. */
+  scope?(input: {
+    meta: Record<string, unknown>;
+  }, config: C): ScopeResult;
+  /** Outbound reply adapter; kinds without `channel` produce no replies or channel checks. */
+  channel?: SourceChannel<C>;
+  /** Bounded context reader for assessments; assessments of a kind without `threadContext` read none. */
+  threadContext?: ThreadContext<C>;
+  /** Maps a search query to candidate Thread keys (such as `github:12`) and Trigger search terms (such as a Mattermost post ID). */
+  find?(query: string): {
+    threads: string[];
+    terms: string[];
+  };
+  /** Returns the ID of the Trigger whose message this Trigger replies to, when derivable without a network read. */
+  repliesTo?(trigger: Trigger): string | undefined;
+  /** Policy section for kinds whose senders have their own identity. */
+  policy?: SourcePolicyPart<Record<string, unknown> & {
+    allowed: {
+      id: string;
+      name?: string;
+    }[];
+  }>;
+  /** Rereads display names for row keys (such as chat names), stores the resolved names in `KV.sources.labels(kind)`, and returns them. */
+  refreshLabels?(host: SourceHost, signal?: AbortSignal): Promise<Record<string, string>>;
+  /** Variables the kind registers with the execution environment and how their values are computed. */
+  environment?: {
+    variables: readonly VariableSpec[];
+    values(input: EnvironmentInput<C>): Record<string, string>;
+  };
+}
+interface SourceInstance<C extends Record<string, unknown> = Record<string, unknown>> {
+  id: string;
+  kind: string;
+  enabled: boolean;
+  config: C;
+}
+//#endregion
+export { GithubComment as _, ThreadContext as a, Retry as c, inject as d, name as f, pollTicketPulls as g, pollThreads as h, SourceKind as i, apply as l, pollRound as m, ChannelLinks as n, SourceContext as o, pollFailure as p, ContextMessage as r, GithubConfig as s, ChannelLink as t, githubKind as u, commentTrigger as v, SourceRegistry as y };

@@ -47,18 +47,26 @@ export const GithubAccountsSchema = z.object({
   cli: z.string().trim().default(''),
 })
 export const MattermostBotSchema = z.object({ url: z.string().trim().default(''), token: z.string().trim().default('') })
+export const AgentmailAccountSchema = z.object({ apiKey: z.string().trim().default(''), inboxId: z.string().trim().default('') })
 /** Source configuration keys that affect deployment setup and trigger a restart when changed. */
-export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { github: Object.keys(GithubAccountsSchema.shape), mattermost: Object.keys(MattermostBotSchema.shape) }
+export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { github: Object.keys(GithubAccountsSchema.shape), mattermost: Object.keys(MattermostBotSchema.shape), agentmail: Object.keys(AgentmailAccountSchema.shape) }
 
 export interface Deployment extends Machine {
   repository: string
   github: { cli: string; login: string; noreply: string }
   mattermost?: MattermostBot
+  agentmail?: AgentmailAccount
 }
 /** A verified Mattermost bot: the server it talks to, and the account the bot posts as. */
 export interface MattermostBot { url: string; token: string; botId: string; username: string }
 /** The part of a Mattermost bot the panel may show: never the token. */
 export const mattermostPublic = (bot: MattermostBot): Omit<MattermostBot, 'token'> => ({ url: bot.url, botId: bot.botId, username: bot.username })
+/** A verified AgentMail account: the key it reads with, and the inbox address the Source watches. */
+export interface AgentmailAccount { apiKey: string; inboxId: string }
+/** The part of an AgentMail account the panel may show: never the key. */
+export const agentmailPublic = (account: AgentmailAccount): Omit<AgentmailAccount, 'apiKey'> => ({ inboxId: account.inboxId })
+/** The AgentMail API every Source request goes to. */
+export const AGENTMAIL_BASE = 'https://api.agentmail.to/v0'
 
 /** Resolve a command name or absolute path to an executable file, ignoring the worker shim directory. */
 export function executable(name: string, path: string, exclude?: string): string {
@@ -122,4 +130,21 @@ export async function resolveMattermostBot(machine: Machine, mattermost: unknown
   const user = z.object({ id: z.string().regex(/^[a-z0-9]{26}$/), username: z.string(), is_bot: z.boolean().optional() }).safeParse(await response.json())
   if (!user.success) throw new SetupError('mattermostNoBot')
   return { url: base, token, botId: user.data.id, username: user.data.username }
+}
+/**
+ * Verifies the AgentMail key against the account and that the named inbox exists, returning the account the Source reads with.
+ * The key is stored in the Source configuration and used only by the AgentMail Source's own requests.
+ */
+export async function resolveAgentmail(machine: Machine, agentmail: unknown, fetcher: typeof fetch = fetch): Promise<AgentmailAccount | undefined> {
+  const { apiKey, inboxId } = AgentmailAccountSchema.parse(agentmail ?? {})
+  if (!apiKey || !inboxId) return undefined
+  const fail = (error: unknown): never => { throw error instanceof SetupError ? error : new SetupError('agentmailUnreachable', { output: reason(error) }) }
+  const headers = { Authorization: `Bearer ${apiKey}` }
+  const me = await fetcher(`${AGENTMAIL_BASE}/auth/me`, { headers, signal: AbortSignal.timeout(15_000) }).catch(fail)
+  if (me.status === 401 || me.status === 403) throw new SetupError('agentmailUnauthorized')
+  if (!me.ok) fail(new Error(`HTTP ${me.status}`))
+  const inbox = await fetcher(`${AGENTMAIL_BASE}/inboxes/${inboxId}`, { headers, signal: AbortSignal.timeout(15_000) }).catch(fail)
+  if (inbox.status === 404) throw new SetupError('agentmailInboxMissing', { inbox: inboxId })
+  if (!inbox.ok) fail(new Error(`HTTP ${inbox.status}`))
+  return { apiKey, inboxId }
 }

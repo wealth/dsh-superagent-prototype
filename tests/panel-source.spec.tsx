@@ -11,7 +11,7 @@ it('shows each Source\'s state on the Source status and opens its settings from 
   await mount()
   await click(zh['tab.source'])
   expect(document.querySelector('.dt-status-title')?.textContent).toBe(zh.statusTitle)
-  expect(all('.dt-form > .dt-list > .dt-row .dt-row-name').map(title => title.textContent)).toEqual(['Mattermost', 'GitHub'])
+  expect(all('.dt-form > .dt-list > .dt-row .dt-row-name').map(title => title.textContent)).toEqual(['Mattermost', 'GitHub', 'AgentMail'])
   expect(all('.dt-form > .dt-list > .dt-row')[0]!.querySelector('.dt-row-meta')?.textContent).toBe('24 小时到达 12被过滤 2最近 ' + document.querySelector('.dt-row-meta time, .dt-row-meta .dt-lv:last-child .dt-lv-value')?.textContent)
   expect(text()).toContain(zh['sourceState.error'])
   expect(text()).toContain('socket closed')
@@ -64,7 +64,7 @@ it('renders each Source\'s settings from its kind\'s fields and saves one Source
   await click(zh['tab.source'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   const cards = all('.dt-card')
-  expect(cards.map(card => card.querySelector('.dt-row-title')?.firstChild?.textContent)).toEqual(['Mattermost', 'GitHub'])
+  expect(cards.map(card => card.querySelector('.dt-row-title')?.firstChild?.textContent)).toEqual(['Mattermost', 'GitHub', 'AgentMail'])
   const feishu = cards[0]!
   expect(feishu.textContent).toContain('接收的频道')
   await click([...feishu.querySelectorAll('button')].find(button => button.textContent === '添加')!)
@@ -172,6 +172,15 @@ it('shows a failed Feishu bot check as a problem of the Feishu Source only, with
   expect(all('.dt-form > .dt-list > .dt-row')[0]!.textContent?.match(/Mattermost 服务器 https:\/\/broken\.test 没有响应：connect ECONNREFUSED/g)).toHaveLength(1)
 })
 
+it('shows a failed AgentMail account check as a problem of the AgentMail Source only', async () => {
+  server.setup = { ...server.setup, agentmailProblem: problemOf('agentmailUnauthorized', {}),
+    accounts: { ...server.setup.accounts!, agentmail: null } }
+  await mount()
+  expect(text()).toContain(zh.problemSetupAgentmail)
+  await click(find(zh.problemSetupAgentmail, 'button, a, [role="button"]'))
+  expect(text()).toContain('AgentMail 拒绝了 API 密钥。')
+})
+
 it('leaves Feishu out of a GitHub-only deployment', async () => {
   server.setup = { ...server.setup, accounts: { ...server.setup.accounts!, mattermost: null } }
   server.settings = { ...server.settings, sources: { ...server.settings.sources, mattermost: { enabled: false, config: {} } } }
@@ -188,7 +197,7 @@ it('shows the Sources waiting for the deployment check, and the problem on the S
   await click(zh['tab.source'])
   const rows = all('.dt-form > .dt-list > .dt-row')
   // The GitHub Source is where the problem is fixed, so it shows the error; Feishu waits.
-  expect(rows.map(row => row.querySelector('.dt-status-text')?.textContent)).toEqual(['等待部署检查', '出错'])
+  expect(rows.map(row => row.querySelector('.dt-status-text')?.textContent)).toEqual(['等待部署检查', '出错', '等待部署检查'])
   expect(text()).not.toContain('Waiting for setup')
   expect(rows[1]!.textContent).toContain('部署检查未通过：GitHub 来源没有设置监听的仓库。')
   await click(find(zh.sourceOpenSettings, '.dt-row button'))

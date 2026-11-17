@@ -24,9 +24,9 @@ function ProblemLine({ problem, onChanged }: { problem: Problem; onChanged: () =
   const raw = (text: string | undefined) => text && <p className="dt-error dt-clamp dt-mono">{text}</p>
   const worded = (text: string) => <p className="dt-error">{text}</p>
   switch (problem.kind) {
-    // A failed Mattermost bot check pauses only the Mattermost Source; other setup problems halt the entire service.
-    case 'setup': return row(t(problem.place === 'mattermost' ? 'problemSetupMattermost' : 'problemSetup'), <p className="dt-error"><SetupMessage
-      problem={problem} /></p>,
+    // A failed Mattermost bot or AgentMail account check pauses only its Source; other setup problems halt the entire service.
+    case 'setup': return row(t(problem.place === 'mattermost' ? 'problemSetupMattermost' : problem.place === 'agentmail' ? 'problemSetupAgentmail' : 'problemSetup'),
+      <p className="dt-error"><SetupMessage problem={problem} /></p>,
       setupPage(problem.place), t(`problemSetupFix.${problem.place}`), <CheckSetupButton />)
     case 'no-source': return row(t('problemNoSource'), undefined, settingsRoute('source'), undefined, go(t('actionOpenSources'),
       settingsRoute('source')))
