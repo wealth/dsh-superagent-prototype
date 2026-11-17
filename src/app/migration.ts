@@ -16,7 +16,7 @@ import type { SettingsVersion, Store } from './store.ts'
 import { Versions } from './versions.ts'
 import { KV, type Key } from '../kv.ts'
 
-export const SCHEMA_VERSION = 12
+export const SCHEMA_VERSION = 13
 /** The oldest database schema version this build can open and migrate directly. */
 export const OLDEST_SCHEMA = 10
 /** The default rules as schemas 10 and 11 shipped them; a rule a team edited keeps its text. */
@@ -109,10 +109,42 @@ export function migrateTo12(store: Store): void {
     const settings = SettingsSchema.parse(current.settings)
     const rules = settings.policy.rules.map(rule => {
       const shipped = SCHEMA_11_DEFAULT_RULES.find(def => def.id === rule.id && def.name === rule.name && def.instruction === rule.instruction)
-      return shipped ? DEFAULT_RULES.find(def => def.id === rule.id)! : rule
+      if (!shipped) return rule
+      const translated = SCHEMA_12_DEFAULT_RULES.find(def => def.id === rule.id)!
+      return { ...rule, name: translated.name, instruction: translated.instruction }
     })
     if (JSON.stringify(rules) === JSON.stringify(settings.policy.rules)) return
     const next = { ...settings, policy: { ...settings.policy, rules } }
+    versions.save(revision => ({ revision, savedAt: new Date().toISOString(), source: 'internal', policyVersion: policyVersion(next),
+      policyChanged: false, notified: [], settings: next }))
+    store.set(KV.settings.block('policy'), store.blockRevision('policy') + 1)
+  })
+}
+
+/** The schema 12 Russian rewrite of the two shipped defaults. */
+const SCHEMA_12_DEFAULT_RULES: readonly { id: string; name: string; instruction: string }[] = [
+  { id: 'copy', name: 'Правки текста', instruction: 'Явные просьбы исправить опечатку, формулировку, пунктуацию или существующий перевод. Сохраняй продуктовые обещания и деловой смысл.' },
+  { id: 'visual', name: 'Правки оформления', instruction: 'Явные запросы на реализацию локальных правок отступов, выравнивания, переполнения или стилей, с указанной целью либо объективно установленным существующим стандартом или проверенно корректным прежним состоянием, которые нужно восстановить. Указание на элемент или мнение, что он несогласован, некрасив или труден для понимания, целью не является. Не придумывай решения о визуальном стиле, информационной иерархии, отрисовке или взаимодействии. Никакого редизайна, нового взаимодействия или поведения. Известный дефект отступов не разрешает соседний неопределённый рестайлинг; оценивай только явно отделимый разрешённый объём. Если направление или объём не установлены, только наблюдай: без подтверждения, исполнителя и нежелательных вопросов.' },
+]
+/** The default rules schemas 10 to 12 shipped: the two English presets and their schema 12 Russian rewrite. */
+const SHIPPED_DEFAULT_RULES: readonly { id: string; name: string; instruction: string }[] = [...SCHEMA_11_DEFAULT_RULES, ...SCHEMA_12_DEFAULT_RULES]
+/**
+ * Schema 13 replaces the shipped default rules (Правки текста, Правки оформления) with the three presets (Запрос
+ * поддержки, Исправление ошибки, Новый функционал). The rewrite fires only while the current settings' rules are exactly
+ * the shipped default set, so a rule a team edited or added keeps the list as it is; a deployment that disabled a default
+ * gets the three presets enabled and adjusts them by hand.
+ */
+export function migrateTo13(store: Store): void {
+  step('the default rules', () => {
+    const versions = new Versions<SettingsVersion>(store, KV.settings.revision, KV.settings.version)
+    const current = versions.current()
+    if (!current) return
+    const settings = SettingsSchema.parse(current.settings)
+    const shipped = (rule: { id: string; name: string; instruction: string }) =>
+      SHIPPED_DEFAULT_RULES.some(def => def.id === rule.id && def.name === rule.name && def.instruction === rule.instruction)
+    if (settings.policy.rules.length !== SHIPPED_DEFAULT_RULES.length / 2
+      || !settings.policy.rules.every(shipped) || new Set(settings.policy.rules.map(rule => rule.id)).size !== settings.policy.rules.length) return
+    const next = { ...settings, policy: { ...settings.policy, rules: DEFAULT_RULES.map(rule => ({ ...rule })) } }
     versions.save(revision => ({ revision, savedAt: new Date().toISOString(), source: 'internal', policyVersion: policyVersion(next),
       policyChanged: false, notified: [], settings: next }))
     store.set(KV.settings.block('policy'), store.blockRevision('policy') + 1)
