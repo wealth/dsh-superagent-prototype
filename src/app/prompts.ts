@@ -41,8 +41,8 @@ export interface PromptVersion { revision: number; previousRevision: number | nu
   legacy?: { config: unknown } }
 export const defaultPrompts = (): PromptConfig => ({ ...teamDefaults, skills: {} })
 
-const ENVIRONMENT_HEADING = 'Execution environment (from this installation\'s settings; it takes precedence over any repository or account named elsewhere in these instructions; an empty value means that part is not configured here). The prepare command of a ticket directory reads the same variables:'
-const POLICY_HEAD = '## Policy\nPolicy version {version}; accept mode {mode}. The accept mode and the rules decide proactive candidates only: an explicit request is routed as dispatch says, in any mode and whatever the rules.'
+const ENVIRONMENT_HEADING = 'Исполнительное окружение (из настроек этой установки; оно приоритетнее любого репозитория или аккаунта, названного в других местах этих инструкций; пустое значение означает, что эта часть здесь не настроена). Команда подготовки каталога тикета читает те же переменные:'
+const POLICY_HEAD = '## Policy\nВерсия политики {version}; режим приёма {mode}. Режим приёма и правила решают только проактивных кандидатов: явный запрос маршрутизируется, как говорит раздел dispatch, в любом режиме и независимо от правил.'
 type Role = 'orchestrator' | 'worker'
 /** A built-in part a team may override: the roles that read it, its text, and the placeholders a template's override keeps. */
 interface BuiltInPart { roles: readonly Role[]; text: string; placeholders?: readonly string[] }
@@ -62,8 +62,8 @@ export const builtInParts = (): Readonly<Record<PartKey, BuiltInPart>> => parts 
   'runtime/handoff/orchestrator': { roles: MAIN, text: handoffPolicy('orchestrator') },
   'runtime/handoff/worker': { roles: WORKER, text: handoffPolicy('worker') },
   'runtime/environment': { roles: BOTH, text: `${ENVIRONMENT_HEADING}\n{variables}`, placeholders: ['{variables}'] },
-  'runtime/policy': { roles: MAIN, text: `${POLICY_HEAD} The enabled rules, by name and id:\n{rules}`, placeholders: ['{version}', '{mode}', '{rules}'] },
-  'runtime/policy/none': { roles: MAIN, text: `${POLICY_HEAD} No rule is enabled: a proactive candidate can only be ignored.`,
+  'runtime/policy': { roles: MAIN, text: `${POLICY_HEAD} Включённые правила, по имени и id:\n{rules}`, placeholders: ['{version}', '{mode}', '{rules}'] },
+  'runtime/policy/none': { roles: MAIN, text: `${POLICY_HEAD} Ни одно правило не включено: проактивный кандидат может быть только проигнорирован.`,
     placeholders: ['{version}', '{mode}'] },
   'skill/mattermost': { roles: BOTH, text: `${sourceSkills.mattermost}\n\n## CLI usage\n${cliNotes}` },
   'skill/github': { roles: BOTH, text: `${sourceSkills.github}\n\n## CLI usage\n${cliNotes}` },

@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { isoTime, said, type AcceptMode, type AdmissionCell, type ChannelRef, type Decision, type Execution, type Follow, type MandateBasis,
   type Reason, type Thread, type Ticket, type TicketInput, type TriggerDisposition } from '../core/index.ts'
 import { POLL_HORIZON_MS } from '../sources/poll.ts'
-import { SettingsSchema, policyVersion, type SettingsOrigin } from '../policy.ts'
+import { DEFAULT_RULES, SettingsSchema, policyVersion, type SettingsOrigin } from '../policy.ts'
 import { autoMergeThreshold, teamDefaults } from './context.ts'
 import { PromptConfigSchema, type PromptConfig, type PromptVersion } from './prompts.ts'
 import type { EffectKind, EffectPayloads } from './effects.ts'
@@ -16,9 +16,15 @@ import type { SettingsVersion, Store } from './store.ts'
 import { Versions } from './versions.ts'
 import { KV, type Key } from '../kv.ts'
 
-export const SCHEMA_VERSION = 11
+export const SCHEMA_VERSION = 12
 /** The oldest database schema version this build can open and migrate directly. */
 export const OLDEST_SCHEMA = 10
+/** The default rules as schemas 10 and 11 shipped them; a rule a team edited keeps its text. */
+const SCHEMA_11_DEFAULT_RULES: readonly { id: string; name: string; instruction: string }[] = [
+  { id: 'copy', name: 'Copy fixes', instruction: 'Explicit requests to correct a typo, wording, punctuation or existing translation. Preserve product promises and business meaning.' },
+  { id: 'visual', name: 'Visual fixes', instruction: 'Explicit implementation requests for local spacing, alignment, overflow or styling, with a specified target or an objectively established existing standard/correct state to restore. Locating an element or calling it inconsistent, unattractive or hard to understand does not establish a target. Do not invent visual style, information hierarchy, rendering or interaction decisions. No redesign, new interaction or behavior. A known spacing defect does not authorize adjacent undefined restyling; assess only a clearly separable authorized scope. If direction or scope is unsettled, observe only: no acknowledgement, worker or unsolicited question.' },
+]
+
 /** Returns an error message explaining why `version` cannot be opened: older schemas need a new state directory. */
 export const tooOld = (version: number): string =>
   `Orchestrator database schema ${version} predates schema ${OLDEST_SCHEMA}, which this version cannot migrate; start with a new state directory`
@@ -87,6 +93,30 @@ export function migrateTo11(store: Store): void {
   }
   step('the reasons', () => { reasonsAsCodes(store) })
   step('the Triggers\' times', () => { triggerTimes(store) })
+}
+
+/**
+ * Schema 12 translates the built-in prompt part templates and the default rules to Russian. The templates read from
+ * `builtInParts()` at runtime, so nothing stored needs rewriting for them; the default rules live in stored settings, so
+ * the current settings snapshot's rules that still carry the schema 11 English default texts word for word are rewritten
+ * to the schema 12 defaults, as a new settings revision. A rule a team edited keeps its text.
+ */
+export function migrateTo12(store: Store): void {
+  step('the default rules', () => {
+    const versions = new Versions<SettingsVersion>(store, KV.settings.revision, KV.settings.version)
+    const current = versions.current()
+    if (!current) return
+    const settings = SettingsSchema.parse(current.settings)
+    const rules = settings.policy.rules.map(rule => {
+      const shipped = SCHEMA_11_DEFAULT_RULES.find(def => def.id === rule.id && def.name === rule.name && def.instruction === rule.instruction)
+      return shipped ? DEFAULT_RULES.find(def => def.id === rule.id)! : rule
+    })
+    if (JSON.stringify(rules) === JSON.stringify(settings.policy.rules)) return
+    const next = { ...settings, policy: { ...settings.policy, rules } }
+    versions.save(revision => ({ revision, savedAt: new Date().toISOString(), source: 'internal', policyVersion: policyVersion(next),
+      policyChanged: false, notified: [], settings: next }))
+    store.set(KV.settings.block('policy'), store.blockRevision('policy') + 1)
+  })
 }
 /**
  * Normalize trigger and thread timestamps to fixed-width millisecond ISO strings so lexicographical text order matches

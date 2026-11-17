@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { SCHEMA_VERSION, Store } from '../src/app/store.ts'
+import { SettingsSchema } from '../src/policy.ts'
 import { KV } from '../src/kv.ts'
 import { basisOf, reasonsOf, withoutCopies } from '../src/app/migration.ts'
 import { Prompts, composePrompt, defaultPrompts } from '../src/app/prompts.ts'
@@ -202,11 +203,34 @@ it('changes nothing when one step fails: the database stays at schema 10 as it w
     updatedAt: '2', mandate: mandate({ via: 'listed' }), meta: { sourceTriggerId: 'trig-1', workspace: '/w/fix-1' } }
   // The current settings must validate; an invalid value aborts the migration transaction.
   schema10(path, { settings: { executor: { maxWorkers: 'many' } } }, { ticket: [ticket] })
-  expect(() => new Store(path)).toThrow(/^The orchestrator database is unchanged at schema 10: its migration to schema 11 failed: the settings: /)
+  expect(() => new Store(path)).toThrow(/^The orchestrator database is unchanged at schema 10: its migration to schema 12 failed: the settings: /)
   const db = new DatabaseSync(path)
   expect(db.prepare("SELECT value FROM kv WHERE key='schema'").get()).toEqual({ value: '10' })
   expect(JSON.parse(String(db.prepare("SELECT value FROM ticket WHERE id='t1'").get()!.value))).toMatchObject({ meta: { workspace: '/w/fix-1' } })
   db.close()
+})
+
+it('rewrites the untouched English default rules into the Russian defaults, and leaves an edited rule as saved', () => {
+  const path = join(directory, 'db.sqlite')
+  new Store(path).close()
+  const db = new DatabaseSync(path)
+  const set = (name: string, value: unknown) => db.prepare('INSERT INTO kv VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(name, JSON.stringify(value))
+  // A schema 11 store whose current settings snapshot still carries the English defaults for `copy` and a team-edited rule.
+  const settings = SettingsSchema.parse({ policy: { rules: [
+    { id: 'copy', name: 'Copy fixes', enabled: true, instruction: 'Explicit requests to correct a typo, wording, punctuation or existing translation. Preserve product promises and business meaning.' },
+    { id: 'visual', name: 'Правки оформления по-своему', enabled: true, instruction: 'особая инструкция команды' },
+  ] } })
+  set('schema', 11)
+  set('settings-revision', 1)
+  set('settings-version:1', { revision: 1, savedAt: '2026-11-01T00:00:00Z', source: 'internal', policyVersion: 'old', policyChanged: false, notified: [], settings })
+  db.close()
+  const store = new Store(path)
+  expect(store.settings().policy.rules).toEqual([
+    { id: 'copy', name: 'Правки текста', enabled: true, instruction: 'Явные просьбы исправить опечатку, формулировку, пунктуацию или существующий перевод. Сохраняй продуктовые обещания и деловой смысл.' },
+    { id: 'visual', name: 'Правки оформления по-своему', enabled: true, instruction: 'особая инструкция команды' },
+  ])
+  expect(store.settingsHistory()[0]!.source).toBe('internal')
+  store.close()
 })
 
 it('reads every basis an earlier gate recorded in the current shape', () => {
@@ -475,7 +499,7 @@ it('names the ticket it stopped at when a ticket does not read, and leaves the d
   const path = join(directory, 'db.sqlite')
   const { inputs: _inputs, ...broken } = ticket10('t9')
   schema10(path, {}, { ticket: [broken] })
-  expect(() => new Store(path)).toThrow(/^The orchestrator database is unchanged at schema 10: its migration to schema 11 failed: ticket t9: /)
+  expect(() => new Store(path)).toThrow(/^The orchestrator database is unchanged at schema 10: its migration to schema 12 failed: ticket t9: /)
   const db = new DatabaseSync(path)
   expect(db.prepare("SELECT value FROM kv WHERE key='schema'").get()).toEqual({ value: '10' })
   expect(JSON.parse(String(db.prepare("SELECT value FROM ticket WHERE id='t9'").get()!.value))).toEqual(broken)

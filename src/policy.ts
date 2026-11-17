@@ -59,9 +59,9 @@ export function assessmentOutcome(assessment: Assessment, settings: Pick<Setting
   return { kind: 'accept', title, scope, reason: assessment.reason, ...(assessment.acknowledgement ? { acknowledgement: assessment.acknowledgement } : {}),
     rules: matches.map(match => match.rule_id), audit, ...(name ? { name } : {}) }
 }
-const DEFAULT_RULES = [
-  { id: 'copy', name: 'Copy fixes', enabled: true, instruction: 'Explicit requests to correct a typo, wording, punctuation or existing translation. Preserve product promises and business meaning.' },
-  { id: 'visual', name: 'Visual fixes', enabled: true, instruction: 'Explicit implementation requests for local spacing, alignment, overflow or styling, with a specified target or an objectively established existing standard/correct state to restore. Locating an element or calling it inconsistent, unattractive or hard to understand does not establish a target. Do not invent visual style, information hierarchy, rendering or interaction decisions. No redesign, new interaction or behavior. A known spacing defect does not authorize adjacent undefined restyling; assess only a clearly separable authorized scope. If direction or scope is unsettled, observe only: no acknowledgement, worker or unsolicited question.' },
+export const DEFAULT_RULES = [
+  { id: 'copy', name: 'Правки текста', enabled: true, instruction: 'Явные просьбы исправить опечатку, формулировку, пунктуацию или существующий перевод. Сохраняй продуктовые обещания и деловой смысл.' },
+  { id: 'visual', name: 'Правки оформления', enabled: true, instruction: 'Явные запросы на реализацию локальных правок отступов, выравнивания, переполнения или стилей, с указанной целью либо объективно установленным существующим стандартом или проверенно корректным прежним состоянием, которые нужно восстановить. Указание на элемент или мнение, что он несогласован, некрасив или труден для понимания, целью не является. Не придумывай решения о визуальном стиле, информационной иерархии, отрисовке или взаимодействии. Никакого редизайна, нового взаимодействия или поведения. Известный дефект отступов не разрешает соседний неопределённый рестайлинг; оценивай только явно отделимый разрешённый объём. Если направление или объём не установлены, только наблюдай: без подтверждения, исполнителя и нежелательных вопросов.' },
 ]
 /** An assessment rule; its instruction may also specify PR reviewers and whether to wait for their approval. */
 export const RuleSchema = z.object({ id: RuleIdSchema, name: z.string().trim().min(1).max(LIMITS.ruleName), enabled: z.boolean(),

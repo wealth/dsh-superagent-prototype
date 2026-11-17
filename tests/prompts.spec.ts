@@ -82,7 +82,7 @@ it.each(['orchestrator', 'worker'] as const)('ends the %s prompt with the fixed 
     expect(promptParts(defaultPrompts(), role).at(-1)).toEqual({ name: 'runtime/handoff', kind: 'fixed', key: `runtime/handoff/${role}`,
       text: handoffPolicy(role) })
     expect(preview[role]).toBe(prompts.compose(defaultPrompts(), role))
-    expect(preview[role]).toContain(`${handoffPolicy(role)}\n\nExecution environment`)
+    expect(preview[role]).toContain(`${handoffPolicy(role)}\n\nИсполнительное окружение`)
     if (role === 'worker') expect(preview[role].endsWith(ENVIRONMENT_LINE)).toBe(true)
     // Nothing follows the main Session's Policy section, so a Policy change leaves the rest of its prompt as it was.
     else expect(preview[role].endsWith(`${ENVIRONMENT_LINE}\n\n${policySection(store.settings()).text}`)).toBe(true)
@@ -240,8 +240,8 @@ describe('overrides of built-in parts', () => {
   it('keeps the environment heading as it was, naming the prepare command', () => {
     expect(composePrompt(defaultPrompts(), 'worker', 'x')).not.toContain('The prepare command')
     withStore(store => {
-      expect(promptsOf(store).compose(defaultPrompts(), 'worker')).toContain('an empty value means that part is not configured here). '
-        + `The prepare command of a ticket directory reads the same variables:\n${ENVIRONMENT_LINE}`)
+      expect(promptsOf(store).compose(defaultPrompts(), 'worker')).toContain('пустое значение означает, что эта часть здесь не настроена). '
+        + `Команда подготовки каталога тикета читает те же переменные:\n${ENVIRONMENT_LINE}`)
     })
   })
 })

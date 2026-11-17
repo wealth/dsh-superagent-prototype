@@ -728,7 +728,7 @@ it('describes rule edits in the Policy history and skips Policy syncs that chang
   await runtime.settings.sync('mattermost')
   expect(revision()).toBe(before)
   await runtime.settings.save('policy', { ...runtime.store.settings().policy, rules: [{ ...settings.policy.rules[0]!, name: '文案' }, { ...settings.policy.rules[1]!, enabled: false }, { id: 'docs', name: '文档', enabled: true, instruction: 'x' }] }, runtime.store.blockRevision('policy'), 'panel')
-  expect(policyHistory(runtime.store, runtime.sources, policyVersion(runtime.store.settings())).items[0]!.changes).toEqual([{ code: 'ruleRenamed', from: 'Copy fixes', to: '文案' }, { code: 'ruleDisabled', name: 'Visual fixes' }, { code: 'ruleAdded', name: '文档' }])
+  expect(policyHistory(runtime.store, runtime.sources, policyVersion(runtime.store.settings())).items[0]!.changes).toEqual([{ code: 'ruleRenamed', from: 'Правки текста', to: '文案' }, { code: 'ruleDisabled', name: 'Правки оформления' }, { code: 'ruleAdded', name: '文档' }])
 })
 
 it('records an admission table change in the Policy history as one line for its Source, with a new Policy version', async () => {
@@ -1869,7 +1869,7 @@ it('ends the main Session\'s prompt with its Policy section, each rule on one li
   // Nothing follows the section, whose lines after its head are exactly the enabled rules.
   expect(policy.trimEnd().split('\n').slice(2)).toEqual(runtime.store.settings().policy.rules.filter(rule => rule.enabled)
     .map(rule => rule.id === 'copy' ? '- Copy fixes (copy): Fix typos. - Keep the tone. ## Not a heading' : `- ${rule.name} (${rule.id}): ${rule.instruction}`))
-  expect(prompt.indexOf('## Policy')).toBeGreaterThan(prompt.indexOf('Execution environment'))
+  expect(prompt.indexOf('## Policy')).toBeGreaterThan(prompt.indexOf('Исполнительное окружение'))
   expect((tools.get(runtime.masterId)!.get('orchestrator_eval') as unknown as { description: string }).description).not.toMatch(/rules/)
 })
 
@@ -1878,19 +1878,19 @@ it('keeps the Policy the main Session judges by in its prompt, after admission a
   const policy = () => { const text = prompt(), at = text.indexOf('## Policy'); return text.slice(at, text.indexOf('\n\n', at)) }
   const settings = runtime.store.settings()
   const line = (rule: { id: string; name: string; instruction: string }) => `- ${rule.name} (${rule.id}): ${rule.instruction}`
-  expect(prompt().indexOf('## Policy')).toBeGreaterThan(prompt().indexOf('Assess proactive candidates yourself'))
+  expect(prompt().indexOf('## Policy')).toBeGreaterThan(prompt().indexOf('Оценивай проактивных кандидатов сам'))
   expect(policy().split('\n').filter(item => item.startsWith('- '))).toEqual(settings.policy.rules.filter(rule => rule.enabled).map(line))
-  expect(policy()).toContain(`Policy version ${policyVersion(settings)}; accept mode ${settings.eval.mode}.`)
+  expect(policy()).toContain(`Версия политики ${policyVersion(settings)}; режим приёма ${settings.eval.mode}.`)
   // The rules govern proactive candidates only; read beside an explicit request, they must not be taken to refuse it.
-  expect(policy()).toContain('The accept mode and the rules decide proactive candidates only: an explicit request is routed as dispatch says, in any mode and whatever the rules.')
+  expect(policy()).toContain('Режим приёма и правила решают только проактивных кандидатов: явный запрос маршрутизируется, как говорит раздел dispatch, в любом режиме и независимо от правил.')
   // A save changes it from the next request: one rule disabled, the other's instruction changed.
   const rules = settings.policy.rules.map(rule => rule.id === 'copy' ? { ...rule, instruction: `${rule.instruction} Keep it short.` } : { ...rule, enabled: false })
   await runtime.settings.save('policy', { ...settings.policy, rules }, runtime.store.blockRevision('policy'), 'panel')
   const saved = runtime.store.settings()
-  expect(policy()).toContain(`Policy version ${policyVersion(saved)}`)
+  expect(policy()).toContain(`Версия политики ${policyVersion(saved)}`)
   expect(policy().split('\n').filter(item => item.startsWith('- '))).toEqual(rules.filter(rule => rule.enabled).map(line))
   // With no rule enabled, a proactive candidate can only be ignored.
   await runtime.settings.save('policy', { ...saved.policy, rules: rules.map(rule => ({ ...rule, enabled: false })) }, runtime.store.blockRevision('policy'), 'panel')
-  expect(policy()).toContain('No rule is enabled: a proactive candidate can only be ignored.')
-  expect(policy()).toContain('The accept mode and the rules decide proactive candidates only')
+  expect(policy()).toContain('Ни одно правило не включено: проактивный кандидат может быть только проигнорирован.')
+  expect(policy()).toContain('Режим приёма и правила решают только проактивных кандидатов')
 })
