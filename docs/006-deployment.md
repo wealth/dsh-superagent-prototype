@@ -63,6 +63,7 @@
 
 1. В GlitchTip (Sentry-совместимом) создайте токен с правами `event:read`, `issue:read`, `project:read` и запишите slug организации.
 2. Пресет поддержки читает их через сервер `selfhosted-sentry-mcp`: задайте в окружении DSH-сервиса `SENTRY_URL`, `SENTRY_AUTH_TOKEN` и `SENTRY_ORG_SLUG` (см. раздел конфигурации ниже). Токен держит процесс сервера на хосте; агенту он не передаётся.
+3. Чтобы новые нерешённые issues сами становились кандидатами, включите также Sentry-источник: на его карточке в настройках Источников задайте адрес сервера, slug организации и тот же токен, затем перечислите проекты (slug), по которым принимать ошибки. Источник опрашивает `GET /api/0/organizations/<org>/issues/` раз в пять минут и превращает issue, впервые появившийся после прошлой проверки, в Триггер наблюдения; станет ли он кандидатом, решает строка «Новые нерешённые issue» в таблице приёма (Eval) и режим оценки. У источника нет исходящего канала: итоги расследования уходят по обычным правилам отчётов, а в GlitchTip ничего не пишется.
 
 ## Установка
 
@@ -84,7 +85,7 @@ dsh plugin --profile superagent add "link:$PWD"
 
 ## Конфигурация машины
 
-Скопируйте [examples/profile.cordis.patch.yml](../examples/profile.cordis.patch.yml) в `~/.dsh/profiles/superagent/cordis.patch.yml`, заменив этот файл, и замените каждый `<placeholder>`. Для Mattermost, AgentMail и Telegram также включите там записи `dsh-superagent-mattermost`, `dsh-superagent-agentmail` и `dsh-superagent-telegram` (по мере надобности). Запись `webserver` задаёт порт панели.
+Скопируйте [examples/profile.cordis.patch.yml](../examples/profile.cordis.patch.yml) в `~/.dsh/profiles/superagent/cordis.patch.yml`, заменив этот файл, и замените каждый `<placeholder>`. Для Mattermost, AgentMail, Telegram и Sentry / GlitchTip также включите там записи `dsh-superagent-mattermost`, `dsh-superagent-agentmail`, `dsh-superagent-telegram` и `dsh-superagent-sentry` (по мере надобности). Запись `webserver` задаёт порт панели.
 
 | Ключ | Обязателен | Значение |
 | --- | --- | --- |
@@ -203,7 +204,7 @@ Check dsh-superagent: run `scripts/dsh-superagent --profile superagent status` i
 
 | Запрос | Ответ |
 | --- | --- |
-| `GET state` | То, что читает каждая страница: `setup`, с `problem`, `mattermostProblem`, `agentmailProblem` и `telegramProblem`, каждый `null` или проблема настройки с `place`, `code`, `values` и `detail`, и `accounts`, когда настройка их разрешила; `health`, запись на каждую часть, ниже, со `state` (`starting`, `ready`, `paused` или `error`), `detail` и `at`; `load`, Сессии Исполнителей `running`, Тикеты `queued` и `maxWorkers`; `paused`; и `masterId` |
+| `GET state` | То, что читает каждая страница: `setup`, с `problem`, `mattermostProblem`, `agentmailProblem`, `telegramProblem` и `sentryProblem`, каждый `null` или проблема настройки с `place`, `code`, `values` и `detail`, и `accounts`, когда настройка их разрешила; `health`, запись на каждую часть, ниже, со `state` (`starting`, `ready`, `paused` или `error`), `detail` и `at`; `load`, Сессии Исполнителей `running`, Тикеты `queued` и `maxWorkers`; `paused`; и `masterId` |
 | `GET settings` | `blocks`: `policy`, `eval` и `executor`, каждый со своим `value` и `revision`; `sources`: экземпляры Источников, каждый с `id`, `kind`, `installed`, `value` своего блока, `{"enabled": …, "config": {…}}` и `revision`, формой своего вида и своей проблемой настройки `problem`, когда она есть; `policyVersion`; и `environment`, `root` и `variables` среды исполнения |
 | `GET sources` | Состояние каждого Источника: `state` (`missing`, `off`, `error`, `setup`, `starting`, `paused` или `ready`), `health` его частей, его проблема настройки `problem`, `stats` за последний день, Триггеры, которые он `filtered` в этот день, и сообщения, которые он `dropped` в этот день, начиная с новейшей потери, каждое со своим `channel`, `preview`, `ticket` (`id` и `title`), когда оно было для одного из них, своим `thread`, когда хранилище его имеет, и `dropped.at` и `dropped.reason`, `channelGone` или `channelIgnored` |
 | `PUT settings/<block>` с `{"value": …, "revision": n}` | Сохраняет один блок: `saved`, новый `revision` блока, `policy_changed` и `restarting`. `value` — это весь блок, как его хранит `GET settings`; отсутствующий ключ принимает значение по умолчанию |
@@ -222,7 +223,7 @@ Check dsh-superagent: run `scripts/dsh-superagent --profile superagent status` i
 | `evals` | Недоступные Оценки за последний час без последующего решения или отклонения |
 | `assessment`, `launch`, `delivery`, `relay`, `notice`, `reply` | Сохранённая работа, описанная в [003 Execution](003-execution.md); delivery считает ожидающую работу, а reply охватывает сообщения Канала |
 | `worker` | Обработка событий Сессии Исполнителя; появляется после её первой неудачи |
-| `github`, `mattermost`, `agentmail`, `telegram`, `history` | Опрос Источников, события и восстановление истории |
+| `github`, `mattermost`, `agentmail`, `telegram`, `sentry`, `history` | Опрос Источников, события и восстановление истории |
 | `sync:<source id>` | Синхронизация списка разрешённых |
 
 Отказ имеет статус и `error`, его текст на английском:
@@ -234,7 +235,7 @@ Check dsh-superagent: run `scripts/dsh-superagent --profile superagent status` i
 
 Блоки:
 
-- `source:github`, `source:mattermost`, `source:agentmail`, `source:telegram`: `{"enabled": true, "config": {…}}`; у AgentMail это `apiKey` и `inboxId` — адрес ящика, у Telegram — `botToken` и необязательный вайтлист `senders`; `deployChecks` GitHub-источника перечисляет деплой-проверки, чей итог после мержа PR тикета становится кандидатом для письма репортеру. Конфигурация GitHub имеет `repository` и `cli` и переключатели `observeIssues`, `observePulls`, `observeComments` и `observeCi`, выключенные по умолчанию, которые принимают каждую новую Issue, новый pull request и комментарий в репозитории и CI основной ветки; у Mattermost есть `channels` как `[{"channelId": "…", "listen": "mentions"}]` (или `"all"`), `directMessages` и `otherChannels` как `"none"` или `"mentions"`.
+- `source:github`, `source:mattermost`, `source:agentmail`, `source:telegram`, `source:sentry`: `{"enabled": true, "config": {…}}`; у AgentMail это `apiKey` и `inboxId` — адрес ящика, у Telegram — `botToken` и необязательный вайтлист `senders`; `deployChecks` GitHub-источника перечисляет деплой-проверки, чей итог после мержа PR тикета становится кандидатом для письма репортеру. Конфигурация GitHub имеет `repository` и `cli` и переключатели `observeIssues`, `observePulls`, `observeComments` и `observeCi`, выключенные по умолчанию, которые принимают каждую новую Issue, новый pull request и комментарий в репозитории и CI основной ветки; у Mattermost есть `channels` как `[{"channelId": "…", "listen": "mentions"}]` (или `"all"`), `directMessages` и `otherChannels` как `"none"` или `"mentions"`.
 - `policy`: `{"rules": […], "sources": {"github": {"allowed": [{"id": "<login>"}], "bots": [{"id": "dependabot[bot]"}]}, "mattermost": {"allowed": [{"id": "<member id>", "name": "…"}], "syncChannel": "<channel id>", "admission": {"<channel id>": {"unlistedAddressed": "explicit"}}}}}`. `bots` перечисляет ботов, чьи сообщения могут стать предполагаемыми кандидатами. Строка `admission` имеет ключ по id канала, `other` или `direct` для Mattermost, `inbox` для AgentMail, и по `issues`, `pulls`, `comments`, `ci` или `deploy` для GitHub; незаполненная ячейка принимает значение по умолчанию (см. [002 Authorization](002-authorization.md)).
 - `eval`: `mode`, `timeoutSeconds` и `model`.
 - `executor`: `model`, `maxWorkers`, `directory`, `prepare`, `blockedCommands` и `prNotices` — переключатель уведомлений о готовности и мерже PR тикета в чате источника (выключенные остаются только ответы на вопросы и сообщения, требующие человека). Пауза обработки — это отдельная настройка, `paused`, которую устанавливает `POST executor/pause`.

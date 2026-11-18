@@ -45,6 +45,8 @@ export const KV = {
     unauthenticated: record<{ count: number; at: string }>('agentmail-unauthenticated') },
   /** Telegram Source: the getUpdates offset so a restart never replays handled updates. */
   telegram: { offset: record<number>('telegram-offset') },
+  /** Sentry Source: the first-seen cursor so a restart never replays known issues. */
+  sentry: { since: record<string>('sentry-since') },
   /** Executor: the worker Session that runs each ticket after an archive replacement, the reverse mapping, the worker replacement generations, and which tickets' workers the plugin itself retired into the archive. */
   executor: { workerFor: family<string, [ticketId: string]>('worker-session:'), ticketFor: family<string, [sessionId: string]>('worker-ticket:'), workerRuns: record<number>('worker-runs'), retired: family<true, [ticketId: string]>('worker-retired:') },
   /**

@@ -14,6 +14,7 @@ import { SettingsSchema } from '../../src/policy.ts'
 import { mattermostKind, mattermostTrigger } from '../../src/sources/mattermost.ts'
 import { githubKind } from '../../src/sources/github.ts'
 import { agentmailKind, agentmailTrigger, type AgentmailMessage } from '../../src/sources/agentmail.ts'
+import { sentryKind } from '../../src/sources/sentry.ts'
 import { Commands } from '../../src/infra/commands.ts'
 import { credentialHelper, workerGitConfig } from '../../src/infra/environment.ts'
 import type { Trigger } from '../../src/core/index.ts'
@@ -28,6 +29,9 @@ export const CHAT = 'chan0000000000000000000001'
 const BOT_ID = 'botuser0000000000000000001'
 export const AGENTMAIL_INBOX = 'agent@agentmail.test'
 export const SENDER = 'bob@example.test'
+/** The fake Sentry-compatible API's unresolved issues, and the account the fixture serves. */
+export const SENTRY_URL = 'https://glitchtip.test', SENTRY_ORG = 'acme'
+export const sentryIssues: { id: string; shortId?: string; title: string; culprit?: string; firstSeen: string; lastSeen?: string; count?: number | string; userCount?: number; level?: string; status?: string; permalink?: string; project: { id: string; slug: string; name?: string } }[] = []
 /** Session ids the tests archive; Sessions and the Executor treat them as archived. */
 export const archived: string[] = []
 /** The fake workspace registry's records, by the path each was created for. */
@@ -194,6 +198,7 @@ export function subagentRuntime(agents: Map<string, FakeAgent>) {
 export async function startRuntime(seed?: (store: Store) => void) {
   archived.length = 0
   workspaces.clear()
+  sentryIssues.length = 0
   const directory = mkdtempSync(join(tmpdir(), 'orchestrator-host-'))
   const AGENT = join(directory, 'agent-gh')
   const MM_URL = 'https://mattermost.test'
@@ -233,6 +238,8 @@ export async function startRuntime(seed?: (store: Store) => void) {
       sentReplies.push({ body: JSON.parse(String(init.body)), key: new Headers(init.headers).get('Idempotency-Key') ?? undefined })
       return json({ message_id: `out_${sentReplies.length}`, thread_id: 'th_reply' })
     }
+    if (path === `/api/0/organizations/${SENTRY_ORG}/projects/`) return json(sentryIssues.map(item => item.project))
+    if (path === `/api/0/organizations/${SENTRY_ORG}/issues/`) return json(sentryIssues)
     return new Response('{}', { status: 404 })
   }))
   vi.spyOn(Commands.prototype, 'git').mockResolvedValue('')
@@ -358,17 +365,19 @@ export async function startRuntime(seed?: (store: Store) => void) {
   for (const cli of [AGENT]) writeFileSync(cli, '#!/bin/sh\n', { mode: 0o755 })
   const seeded = new Store(join(directory, 'orchestrator.sqlite'))
   const sources = { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT } }, mattermost: { enabled: true, config: { url: MM_URL, token: 'test-token' } },
-    agentmail: { enabled: true, config: { apiKey: 'test-key', inboxId: AGENTMAIL_INBOX } } }
+    agentmail: { enabled: true, config: { apiKey: 'test-key', inboxId: AGENTMAIL_INBOX } },
+    sentry: { enabled: true, config: { url: SENTRY_URL, orgSlug: SENTRY_ORG, authToken: 'sent-token' } } }
   seeded.saveSettings(SettingsSchema.parse({ ...seeded.settings(), sources }))
   seed?.(seeded)
   seeded.close()
   const runtime = new Runtime(ctx, testMachine({ stateDir: directory }), vi.fn())
   await runtime.ready
-  runtime.sources.register(mattermostKind); runtime.sources.register(githubKind); runtime.sources.register(agentmailKind)
+  runtime.sources.register(mattermostKind); runtime.sources.register(githubKind); runtime.sources.register(agentmailKind); runtime.sources.register(sentryKind)
   const settings = runtime.store.settings()
   runtime.store.saveSettings({ ...settings, eval: { ...settings.eval, mode: 'auto' },
     policy: { ...settings.policy, sources: { mattermost: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChannel: CHAT }, github: { allowed: [{ id: 'alice' }] },
-      agentmail: { allowed: [{ id: SENDER, name: 'Bob' }] } } },
+      agentmail: { allowed: [{ id: SENDER, name: 'Bob' }] },
+      sentry: { admission: { issues: { unlistedUnaddressed: 'inferred' } } } } },
     sources: { ...sources, mattermost: { enabled: true, config: { url: MM_URL, token: 'test-token', channels: [{ channelId: CHAT, listen: 'all' }], directMessages: true } } } })
   deliveries.mockClear()
 

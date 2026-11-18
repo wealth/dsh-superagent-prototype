@@ -11,9 +11,9 @@ export const workerPrompt = promptFile('worker')
 export const guides: Readonly<Record<string, string>> = Object.fromEntries(['subscriptions', 'replies', 'dispatch', 'work']
   .map(name => [name, promptFile(name)]))
 /** Bundled Source skills registered by dsh-superagent; a team may override their text. */
-export const sourceSkills: Readonly<Record<'mattermost' | 'github' | 'agentmail' | 'telegram' | 'qa' | 'support', string>> =
+export const sourceSkills: Readonly<Record<'mattermost' | 'github' | 'agentmail' | 'telegram' | 'sentry' | 'qa' | 'support', string>> =
   { mattermost: bundledSkills.mattermost.content, github: bundledSkills.github.content, agentmail: bundledSkills.agentmail.content,
-    telegram: bundledSkills.telegram.content, qa: bundledSkills.qa.content, support: bundledSkills.support.content }
+    telegram: bundledSkills.telegram.content, sentry: bundledSkills.sentry.content, qa: bundledSkills.qa.content, support: bundledSkills.support.content }
 export const cliNotes = promptFile('cli')
 /** Default text for the team-editable prompt sections (communication, ticket scope, and PR delivery). */
 export const teamDefaults = {

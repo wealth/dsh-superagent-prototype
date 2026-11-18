@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process'
 import { basename } from 'node:path'
 import { promisify } from 'node:util'
 import { z } from 'zod'
-import type { TelegramBot, Deployment, AgentmailAccount, MattermostBot } from '../deployment.ts'
+import type { TelegramBot, Deployment, AgentmailAccount, MattermostBot, SentryAccount } from '../deployment.ts'
 
 const exec = promisify(execFile)
 const TIMEOUT_MS = 90_000
@@ -107,6 +107,12 @@ export class Commands {
     const bot = this.deployment.telegram
     if (!bot) throw new Error('The Telegram Source has no working bot')
     return bot
+  }
+  /** The Sentry-compatible account of the current deployment, whose token only the Sentry Source's own requests use. */
+  sentry(): SentryAccount {
+    const account = this.deployment.sentry
+    if (!account) throw new Error('The Sentry Source has no working account')
+    return account
   }
   /** Runs `git` on PATH using the agent's isolated git environment and credential helper. */
   async git(args: string[], cwd: string): Promise<string> { return this.run('git', args, cwd) }

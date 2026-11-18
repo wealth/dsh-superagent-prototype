@@ -13,7 +13,7 @@
 | Delivery requirements | Свидетельства в pull request, условие auto-merge с его порогом строк и автор коммитов; без него Исполнитель коммитит как no-reply адрес аккаунта агента |
 | Team skills | Знания, которые агенты загружают, когда это нужно, например навык `identities`, который говорит, какой пользователь чата — какой аккаунт GitHub |
 
-Встроенный текст охватывает роли, использование инструментов, механику хоста, правила авторизации и навыки источников (Mattermost, GitHub, AgentMail, Telegram), проверку качества и поддержку. Он ссылается на командные секции по их заголовкам, а не повторяет их.
+Встроенный текст охватывает роли, использование инструментов, механику хоста, правила авторизации и навыки источников (Mattermost, GitHub, AgentMail, Telegram, Sentry / GlitchTip), проверку качества и поддержку. Он ссылается на командные секции по их заголовкам, а не повторяет их.
 
 ### Встроенные части и шаблоны
 
@@ -24,7 +24,7 @@
 | Общие инструкции и роли | `runtime/shared`, `runtime/orchestrator`, `runtime/worker` |
 | Рабочие инструкции | `runtime/subscriptions`, `runtime/replies`, `runtime/dispatch`, `runtime/work`, `runtime/admission` |
 | Инструкции передачи | `runtime/handoff/orchestrator`, `runtime/handoff/worker` |
-| Навыки Источников и роли | `skill/mattermost`, `skill/github`, `skill/agentmail`, `skill/telegram`, `skill/qa`, `skill/support` |
+| Навыки Источников и роли | `skill/mattermost`, `skill/github`, `skill/agentmail`, `skill/telegram`, `skill/sentry`, `skill/qa`, `skill/support` |
 | Навык проверки | `skill/qa` — протокол локальной копии в браузере: снимки до/после, дифф, локали |
 | Генерируемые секции | `runtime/environment`, `runtime/policy`, `runtime/policy/none` |
 

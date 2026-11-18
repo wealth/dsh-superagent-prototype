@@ -32,6 +32,7 @@ interface Deployment extends Machine {
   mattermost?: MattermostBot;
   agentmail?: AgentmailAccount;
   telegram?: TelegramBot;
+  sentry?: SentryAccount;
 }
 /** A verified Mattermost bot: the server it talks to, and the account the bot posts as. */
 interface MattermostBot {
@@ -51,6 +52,12 @@ interface TelegramBot {
   botId: number;
   username: string;
 }
+/** A verified Sentry-compatible account: the server and organization the Source reads, and the token it reads with. */
+interface SentryAccount {
+  url: string;
+  orgSlug: string;
+  authToken: string;
+}
 /**
  * Verifies the Mattermost bot token against the server and returns the bot account it belongs to.
  * The token is stored in the Source configuration and used only by the Mattermost Source's own requests.
@@ -66,6 +73,11 @@ declare function resolveMattermostBot(machine: Machine, mattermost: unknown, fet
  */
 declare function resolveTelegram(machine: Machine, telegram: unknown, fetcher?: typeof fetch): Promise<TelegramBot | undefined>;
 declare function resolveAgentmail(machine: Machine, agentmail: unknown, fetcher?: typeof fetch): Promise<AgentmailAccount | undefined>;
+/**
+ * Verifies the Sentry-compatible account against its server and that the named organization exists, returning the account
+ * the Source reads with. The token is stored in the Source configuration and used only by the Sentry Source's own requests.
+ */
+declare function resolveSentry(machine: Machine, sentry: unknown, fetcher?: typeof fetch): Promise<SentryAccount | undefined>;
 //#endregion
 //#region src/core/reasons.d.ts
 /**
@@ -754,4 +766,4 @@ interface Repositories {
 //#region src/core/intake.d.ts
 type ReceiveResult = 'stored' | 'duplicate' | 'filtered';
 //#endregion
-export { settled as $, MandateBasis as A, TicketEndBy as B, Decision as C, Follow as D, Execution as E, Thread as F, followupOwners as G, TicketOutcome as H, ThreadFact as I, latestReport as J, isoTime as K, ThreadFacts as L, ReportState as M, Strength as N, FollowupRecords as O, Text as P, runningAssignment as Q, ThreadRef as R, ChannelRef as S, Evaluation as T, Trigger as U, TicketInput as V, TriggerDisposition as W, reached as X, liveTicket as Y, readUntil as Z, ActorRef as _, DomainEvent as a, ReasonCode as at, AssignmentState as b, GateResult as c, AgentmailAccount as ct, Policy as d, DeploymentConfig as dt, threadKey as et, ReplyStatus as f, MattermostBot as ft, AcceptMode as g, resolveTelegram as gt, SourceScope as h, resolveMattermostBot as ht, Candidate as i, Reason as it, PolicyEffect as j, Mandate as k, OutboundMessage as l, Config as lt, ScopeResult as m, resolveAgentmail as mt, AssessmentOutcome as n, waitsForPerson as nt, DomainEvents as o, reasonText as ot, Repositories as p, TelegramBot as pt, latestAssignment as q, Assessor as r, REASONS as rt, Executor as s, said as st, ReceiveResult as t, ticketOutcome as tt, Outbox as u, Deployment as ut, AdmissionCell as v, DecisionKind as w, Attention as x, Assignment as y, Ticket as z };
+export { settled as $, MandateBasis as A, TicketEndBy as B, Decision as C, Follow as D, Execution as E, Thread as F, followupOwners as G, TicketOutcome as H, ThreadFact as I, latestReport as J, isoTime as K, ThreadFacts as L, ReportState as M, Strength as N, FollowupRecords as O, Text as P, runningAssignment as Q, ThreadRef as R, ChannelRef as S, Evaluation as T, Trigger as U, TicketInput as V, TriggerDisposition as W, reached as X, liveTicket as Y, readUntil as Z, ActorRef as _, resolveSentry as _t, DomainEvent as a, ReasonCode as at, AssignmentState as b, GateResult as c, AgentmailAccount as ct, Policy as d, DeploymentConfig as dt, threadKey as et, ReplyStatus as f, MattermostBot as ft, AcceptMode as g, resolveMattermostBot as gt, SourceScope as h, resolveAgentmail as ht, Candidate as i, Reason as it, PolicyEffect as j, Mandate as k, OutboundMessage as l, Config as lt, ScopeResult as m, TelegramBot as mt, AssessmentOutcome as n, waitsForPerson as nt, DomainEvents as o, reasonText as ot, Repositories as p, SentryAccount as pt, latestAssignment as q, Assessor as r, REASONS as rt, Executor as s, said as st, ReceiveResult as t, ticketOutcome as tt, Outbox as u, Deployment as ut, AdmissionCell as v, resolveTelegram as vt, DecisionKind as w, Attention as x, Assignment as y, Ticket as z };

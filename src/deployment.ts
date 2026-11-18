@@ -49,8 +49,9 @@ export const GithubAccountsSchema = z.object({
 export const MattermostBotSchema = z.object({ url: z.string().trim().default(''), token: z.string().trim().default('') })
 export const AgentmailAccountSchema = z.object({ apiKey: z.string().trim().default(''), inboxId: z.string().trim().default('') })
 export const TelegramBotSchema = z.object({ botToken: z.string().trim().default('') })
+export const SentryAccountSchema = z.object({ url: z.string().trim().default(''), orgSlug: z.string().trim().default(''), authToken: z.string().trim().default('') })
 /** Source configuration keys that affect deployment setup and trigger a restart when changed. */
-export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { github: Object.keys(GithubAccountsSchema.shape), mattermost: Object.keys(MattermostBotSchema.shape), agentmail: Object.keys(AgentmailAccountSchema.shape), telegram: Object.keys(TelegramBotSchema.shape) }
+export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { github: Object.keys(GithubAccountsSchema.shape), mattermost: Object.keys(MattermostBotSchema.shape), agentmail: Object.keys(AgentmailAccountSchema.shape), telegram: Object.keys(TelegramBotSchema.shape), sentry: Object.keys(SentryAccountSchema.shape) }
 
 export interface Deployment extends Machine {
   repository: string
@@ -58,6 +59,7 @@ export interface Deployment extends Machine {
   mattermost?: MattermostBot
   agentmail?: AgentmailAccount
   telegram?: TelegramBot
+  sentry?: SentryAccount
 }
 /** A verified Mattermost bot: the server it talks to, and the account the bot posts as. */
 export interface MattermostBot { url: string; token: string; botId: string; username: string }
@@ -73,6 +75,10 @@ export const AGENTMAIL_BASE = 'https://api.agentmail.to/v0'
 export interface TelegramBot { token: string; botId: number; username: string }
 /** The part of a Telegram bot the panel may show: never the token. */
 export const telegramPublic = (bot: TelegramBot): Omit<TelegramBot, 'token'> => ({ botId: bot.botId, username: bot.username })
+/** A verified Sentry-compatible account: the server and organization the Source reads, and the token it reads with. */
+export interface SentryAccount { url: string; orgSlug: string; authToken: string }
+/** The part of a Sentry account the panel may show: never the token. */
+export const sentryPublic = (account: SentryAccount): Omit<SentryAccount, 'authToken'> => ({ url: account.url, orgSlug: account.orgSlug })
 
 /** Resolve a command name or absolute path to an executable file, ignoring the worker shim directory. */
 export function executable(name: string, path: string, exclude?: string): string {
@@ -168,4 +174,20 @@ export async function resolveAgentmail(machine: Machine, agentmail: unknown, fet
   if (inbox.status === 404) throw new SetupError('agentmailInboxMissing', { inbox: inboxId })
   if (!inbox.ok) fail(new Error(`HTTP ${inbox.status}`))
   return { apiKey, inboxId }
+}
+/**
+ * Verifies the Sentry-compatible account against its server and that the named organization exists, returning the account
+ * the Source reads with. The token is stored in the Source configuration and used only by the Sentry Source's own requests.
+ */
+export async function resolveSentry(machine: Machine, sentry: unknown, fetcher: typeof fetch = fetch): Promise<SentryAccount | undefined> {
+  const { url, orgSlug, authToken } = SentryAccountSchema.parse(sentry ?? {})
+  if (!url || !orgSlug || !authToken) return undefined
+  const base = url.replace(/\/+$/, '')
+  const fail = (error: unknown): never => { throw error instanceof SetupError ? error : new SetupError('sentryUnreachable', { url: base, output: reason(error) }) }
+  const response = await fetcher(`${base}/api/0/organizations/${encodeURIComponent(orgSlug)}/projects/`,
+    { headers: { Authorization: `Bearer ${authToken}` }, signal: AbortSignal.timeout(15_000) }).catch(fail)
+  if (response.status === 401 || response.status === 403) throw new SetupError('sentryUnauthorized')
+  if (response.status === 404) throw new SetupError('sentryOrgMissing', { org: orgSlug })
+  if (!response.ok) fail(new Error(`HTTP ${response.status}`))
+  return { url: base, orgSlug, authToken }
 }

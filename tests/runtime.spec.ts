@@ -21,6 +21,9 @@ import { SettingsSchema, policyVersion, type SettingsOrigin } from '../src/polic
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { mattermostKind } from '../src/sources/mattermost.ts'
 import { agentmailKind, agentmailTrigger, type AgentmailMessage } from '../src/sources/agentmail.ts'
+import { sentryKind } from '../src/sources/sentry.ts'
+import { IssueSchema, sentryTrigger } from '../src/sources/sentry-trigger.ts'
+import { SENTRY_ORG, SENTRY_URL, sentryIssues } from './fixtures/host.ts'
 import { githubKind, pollRound } from '../src/sources/github.ts'
 import { CliError, Commands } from '../src/infra/commands.ts'
 import { UserError, key, runningAssignment, said, threadKey, waitsForPerson, type Trigger } from '../src/core/index.ts'
@@ -287,8 +290,8 @@ beforeEach(async () => {
   runtime = new Runtime(ctx, testMachine({ stateDir: directory }), restarts)
   await runtime.ready
   // Source kinds are normally registered by plugins that are not loaded in unit tests.
-  runtime.sources.register(mattermostKind); runtime.sources.register(githubKind); runtime.sources.register(agentmailKind)
-  runtime.store.saveSettings({ ...runtime.store.settings(), policy: { ...runtime.store.settings().policy, sources: { mattermost: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChannel: CHAT }, github: { allowed: [{ id: 'alice' }] }, agentmail: { allowed: [{ id: SENDER, name: 'Bob' }] } } }, eval: { ...runtime.store.settings().eval, mode: 'auto' }, sources: { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT() } }, mattermost: { enabled: true, config: { url: 'https://mattermost.test', token: 'test-token', channels: [{ channelId: CHAT, listen: 'all' }], directMessages: true } }, agentmail: { enabled: true, config: { apiKey: 'test-key', inboxId: AGENTMAIL_INBOX } } } })
+  runtime.sources.register(mattermostKind); runtime.sources.register(githubKind); runtime.sources.register(agentmailKind); runtime.sources.register(sentryKind)
+  runtime.store.saveSettings({ ...runtime.store.settings(), policy: { ...runtime.store.settings().policy, sources: { mattermost: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChannel: CHAT }, github: { allowed: [{ id: 'alice' }] }, agentmail: { allowed: [{ id: SENDER, name: 'Bob' }] }, sentry: { admission: { issues: { unlistedUnaddressed: 'inferred' } } } } }, eval: { ...runtime.store.settings().eval, mode: 'auto' }, sources: { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT() } }, mattermost: { enabled: true, config: { url: 'https://mattermost.test', token: 'test-token', channels: [{ channelId: CHAT, listen: 'all' }], directMessages: true } }, agentmail: { enabled: true, config: { apiKey: 'test-key', inboxId: AGENTMAIL_INBOX } }, sentry: { enabled: true, config: { url: SENTRY_URL, orgSlug: SENTRY_ORG, authToken: 'sent-token' } } } })
   deliveries.mockClear()
 })
 afterEach(async () => { expect(controller.prompt).not.toHaveBeenCalled(); await runtime?.stop(); vi.restoreAllMocks(); rmSync(directory, { recursive: true, force: true }) })
@@ -333,6 +336,29 @@ it('relays an email to the AgentMail inbox as a candidate and creates the ticket
   expect(runtime.store.receipts.get(key('ack', received.id))).toMatchObject({ channel: expect.objectContaining({ source: 'agentmail', address: expect.objectContaining({ inboxId: AGENTMAIL_INBOX, threadId: 'th_1', messageId: 'msg_1' }) }), status: 'sent' })
   expect(sentReplies).toEqual([{ body: { text: '收到，修复回归。' }, key: key('ack', received.id) }])
   expect(await route({ kind: 'accept', trigger_id: received.id, title: 'again', worktree_name: worktreeName, acknowledgement: 'x' })).toMatchObject({ ticket: { ticket_id: ticket.id } })
+})
+
+it('relays a new Sentry issue as an inferred candidate and creates the ticket with its facts on accept', async () => {
+  const firstSeen = new Date(Date.now() - 60_000).toISOString()
+  sentryIssues.push({ id: '7', shortId: 'WEB-3', title: 'TypeError: undefined is not a function', culprit: 'web/app.js in submit',
+    firstSeen, lastSeen: firstSeen, count: 5, userCount: 2, level: 'error', project: { id: '1', slug: 'web', name: 'Web' } })
+  // The poll loop runs on its own cadence; receiving the kind's own trigger mirrors what it produces, and a later poll of the
+  // same issue dedups by the trigger id.
+  const trigger = sentryTrigger(IssueSchema.parse(sentryIssues[0]), { url: SENTRY_URL, orgSlug: SENTRY_ORG })
+  await receive(trigger)
+  const candidate = relays(runtime.masterId).find(item => item.kind === 'candidate')!
+  expect(candidate).toMatchObject({ strength: 'inferred', trigger_id: trigger!.id })
+  // An inferred candidate goes through the assessment tools, not the routing one.
+  await runTool(runtime.masterId, 'orchestrator_eval', { trigger_id: trigger!.id })
+  const accepted = await runTool(runtime.masterId, 'orchestrator_eval_decide', { trigger_id: trigger!.id, decision: 'accept', title: 'Ошибка в проде',
+    worktree_name: worktreeName, scope: 'bug', reason: 'new prod error', intent_evidence: 'quoted',
+    rule_assessments: [{ rule_id: 'support', matched: false, reason: 'not a request' }, { rule_id: 'bugfix', matched: true, reason: 'prod defect' }, { rule_id: 'feature', matched: false, reason: 'no' }],
+    direction: { implementation_requested: true, target_basis: 'existing-standard', requires_design_decision: false, evidence: 'stack names the submit handler' } })
+  const ticket = runtime.store.tickets.get((accepted.ticket as { ticket_id: string }).ticket_id)!
+  expect(ticket).toMatchObject({ mandate: { basis: expect.objectContaining({ via: 'admission', source: 'sentry', row: 'issues' }) } })
+  expect(Object.fromEntries(runtime.ticketEnvironment(ticket).map(variable => [variable.key, variable.value])))
+    .toMatchObject({ DSH_SUPERAGENT_SENTRY_PROJECT: 'web', DSH_SUPERAGENT_SENTRY_ISSUE: 'WEB-3', DSH_SUPERAGENT_SENTRY_URL: `${SENTRY_URL}/organizations/${SENTRY_ORG}/issues/7/` })
+  sentryIssues.length = 0
 })
 
 it('fans a person\'s later thread message out to the live worker as context and tells the orchestrator, without an Eval', async () => {

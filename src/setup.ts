@@ -1,7 +1,7 @@
 /** Structured startup and configuration errors with the settings location where the operator can fix them. */
 import { fill } from './infra/text.ts'
 
-export type SetupPlace = 'deployment' | 'github' | 'mattermost' | 'agentmail' | 'telegram'
+export type SetupPlace = 'deployment' | 'github' | 'mattermost' | 'agentmail' | 'telegram' | 'sentry'
 export const SETUP_PROBLEMS = {
   foreignFile: ['deployment', '{file} was not written by dsh-superagent; move it, or choose another state directory.'],
   gitTooOld: ['deployment', 'git does not read the github.com credential configuration dsh-superagent writes; dsh-superagent needs git 2.32 or later.'],
@@ -27,6 +27,10 @@ export const SETUP_PROBLEMS = {
   telegramUnreachable: ['telegram', 'Telegram did not answer: {output}'],
   telegramUnauthorized: ['telegram', 'The Telegram bot token was rejected.'],
   telegramNoBot: ['telegram', 'Telegram did not report the bot account.'],
+  sentryUnset: ['sentry', 'The Sentry Source names no server URL, organization or API token.'],
+  sentryUnreachable: ['sentry', 'The Sentry-compatible server at {url} did not answer: {output}'],
+  sentryUnauthorized: ['sentry', 'The Sentry API token was rejected.'],
+  sentryOrgMissing: ['sentry', 'The organization {org} does not exist under this token.'],
 } as const satisfies Record<string, readonly [SetupPlace, string]>
 export type SetupCode = keyof typeof SETUP_PROBLEMS
 export interface SetupProblem { place: SetupPlace; code: SetupCode; values: Record<string, string>; detail: string }

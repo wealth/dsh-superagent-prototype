@@ -18,6 +18,7 @@
     "./mattermost-watch": "./lib/mattermost-watch.js",
     "./agentmail-watch": "./lib/agentmail-watch.js",
     "./telegram-watch": "./lib/telegram-watch.js",
+    "./sentry-watch": "./lib/sentry-watch.js",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },

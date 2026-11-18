@@ -386,6 +386,11 @@ Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsub
 | `src/sources/telegram-loops.ts` | Цикл Telegram: длинный опрос getUpdates и смещение обновлений |
 | `src/sources/telegram-channel.ts` | Канал Telegram: ответы в чат через sendMessage, `sent` или `gone` |
 | `src/sources/telegram-read.ts` | `telegramThreadContext`: контекст чата, который бот сам видел |
+| `src/sources/sentry.ts` | Вид Sentry / GlitchTip и точка входа плагина, экспортируемая как `./sentry-watch` |
+| `src/sources/sentry-trigger.ts` | Issues Sentry как Триггеры наблюдений: проект, виновник, счётчики, ссылка |
+| `src/sources/sentry-api.ts` | Запросы Sentry-совместимого API: список issues организации и события issue |
+| `src/sources/sentry-loops.ts` | Цикл Sentry: опрос новых нерешённых issue по курсору `firstSeen` |
+| `src/sources/sentry-read.ts` | `sentryThreadContext`: последние события issue для оценки |
 | `src/sources/admission-context.ts` | Ограниченное окно, из которого начинается оценка: первые страницы Треда Триггера, читаемые через его вид, и сообщения вокруг Триггера |
 | `src/client/index.tsx` | Точка входа клиентского плагина: запись в боковой панели, основная панель и страница в Plugin Manager DeepSeek Harness |
 | `src/client/app.tsx` | Панель: шапка, поиск, глоссарий, вкладки и страница текущего маршрута |
@@ -423,6 +428,7 @@ Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsub
 | `tests/sources.spec.ts` | Источники Mattermost и GitHub на `SourceContext`: трансляция, опросы и позиции чтения, правила pull request'ов, здоровье |
 | `tests/agentmail.spec.ts` | Источник AgentMail: трансляция писем, опрос ящика и курсоры, канал ответов с идемпотентностью, части политики |
 | `tests/telegram.spec.ts` | Источник Telegram: трансляция сообщений, длинный опрос и смещение, канал ответов, части политики |
+| `tests/sentry.spec.ts` | Источник Sentry / GlitchTip: Триггеры issue, вайтлист проектов, опрос по курсору, контекст событий, проверка аккаунта |
 | `tests/commands.spec.ts` | Вызовы CLI как аккаунты развёртывания, ответы Каналов и вызовы GitHub с ограничением по репозиторию |
 | `tests/github-read.spec.ts` | Чтения GitHub |
 | `tests/admission-context.spec.ts` | Окно Треда оценок |

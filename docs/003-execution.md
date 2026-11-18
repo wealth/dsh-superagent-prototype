@@ -74,6 +74,7 @@ Executor Sessions выполняют команды без одобрения к
 | `DSH_SUPERAGENT_MATTERMOST_BOT`, `DSH_SUPERAGENT_MATTERMOST_CHANNEL` | Mattermost | Бот и канал, запустивший Тикет |
 | `DSH_SUPERAGENT_AGENTMAIL_INBOX`, `DSH_SUPERAGENT_AGENTMAIL_FROM` | AgentMail | Ящик и отправитель письма, запустившего Тикет |
 | `DSH_SUPERAGENT_TELEGRAM_CHAT` | Telegram | Чат, запустивший Тикет |
+| `DSH_SUPERAGENT_SENTRY_PROJECT`, `DSH_SUPERAGENT_SENTRY_ISSUE`, `DSH_SUPERAGENT_SENTRY_URL` | Sentry / GlitchTip | Проект, короткий id и страница issue, запустившего Тикет |
 
 Значения, специфичные для Тикета, берутся из его директории и исходного Триггера. Другие значения берутся из текущих настроек развёртывания. Только панель может менять настройки среды исполнения; текст, отправленный главной Сессии, не может изменить настроенную shell-команду.
 

@@ -1,7 +1,7 @@
 /** Probes repository and account CLIs, configures the worker execution environment and command shims, and tracks setup readiness. */
 import type { Context } from '@deepseek-ai/cordis'
 import { UserError } from '../core/index.ts'
-import { SETUP_FIELDS, resolveAgentmail, resolveDeployment, resolveMattermostBot, resolveTelegram, workerProbe, type Deployment, type Machine } from '../deployment.ts'
+import { SETUP_FIELDS, resolveAgentmail, resolveDeployment, resolveMattermostBot, resolveSentry, resolveTelegram, workerProbe, type Deployment, type Machine } from '../deployment.ts'
 import { agentVariables, applyEnvironment, verifyEnvironment, withoutDirectory, workerBin, writeEnvironment } from '../infra/environment.ts'
 import type { Settings, SettingsBlock } from '../policy.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
@@ -30,6 +30,8 @@ export class Setup {
   agentmailProblem?: SetupProblem
   /** Telegram bot check failure that pauses only the Telegram Source. */
   telegramProblem?: SetupProblem
+  /** Sentry account check failure that pauses only the Sentry Source. */
+  sentryProblem?: SetupProblem
   /** PATH with the worker shim directory removed so the host's own CLI calls invoke the real binaries. */
   private readonly path: string
   /** Environment variables pointing agent subprocesses at the isolated git config and command shims. */
@@ -57,7 +59,7 @@ export class Setup {
   }
   /** Trigger a restart to re-run setup, refusing if setup is already healthy so running assignments are not interrupted. */
   check(): void {
-    if (this.configured() && !this.mattermostProblem && !this.agentmailProblem && !this.telegramProblem) throw new UserError('setupComplete')
+    if (this.configured() && !this.mattermostProblem && !this.agentmailProblem && !this.telegramProblem && !this.sentryProblem) throw new UserError('setupComplete')
     this.restart()
   }
   /** Defer the restart to the next macrotask so the current HTTP or tool caller receives its response first. */
@@ -68,6 +70,7 @@ export class Setup {
     const check = block === 'source:mattermost' ? resolveMattermostBot(machine, settings.sources.mattermost?.config)
       : block === 'source:agentmail' ? resolveAgentmail(machine, settings.sources.agentmail?.config)
       : block === 'source:telegram' ? resolveTelegram(machine, settings.sources.telegram?.config)
+      : block === 'source:sentry' ? resolveSentry(machine, settings.sources.sentry?.config)
       : resolveDeployment(machine, settings.sources.github?.config, this.probe())
     await check.catch((error: unknown) => { if (!(error instanceof SetupError) || error.place === block.slice(7)) throw error })
   }
@@ -104,7 +107,14 @@ export class Setup {
       context.logger.warn('dsh-superagent leaves Telegram out: %s', error.message)
       return undefined
     })
-    const resolved = { ...deployment, ...mattermost ? { mattermost } : {}, ...agentmail ? { agentmail } : {}, ...telegram ? { telegram } : {} }
+    // The Sentry-compatible account is optional the same way: a failed check pauses only that Source.
+    const sentry = await resolveSentry(machine, settings.sources.sentry?.config).catch((error: unknown) => {
+      if (!(error instanceof SetupError)) throw error
+      this.sentryProblem = error.problem
+      context.logger.warn('dsh-superagent leaves Sentry out: %s', error.message)
+      return undefined
+    })
+    const resolved = { ...deployment, ...mattermost ? { mattermost } : {}, ...agentmail ? { agentmail } : {}, ...telegram ? { telegram } : {}, ...sentry ? { sentry } : {} }
     const machineProblem = (error: unknown): never => {
       if (error instanceof SetupError) throw error
       throw new SetupError('environmentFailed', { output: error instanceof Error ? error.message : String(error) })

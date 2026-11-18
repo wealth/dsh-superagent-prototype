@@ -5,6 +5,7 @@ import { migrateSettings } from '../src/app/migration.ts'
 import { SourceRegistry } from '../src/sources/registry.ts'
 import { mattermostKind } from '../src/sources/mattermost.ts'
 import { githubKind } from '../src/sources/github.ts'
+import { sentryKind } from '../src/sources/sentry.ts'
 import type { Thread, Ticket, Trigger } from '../src/core/index.ts'
 
 const MEMBER = 'ualice00000000000000000000'
@@ -450,6 +451,21 @@ describe('bots and events without a sender', () => {
       reason: 'admission_ignored' })
     const pull = setup(observing({ observeCi: true }, { admission })).policy.gate(ci({ number: 9, isPr: true }), thread(), [])
     expect(pull).toEqual({ admissible: false, reason: 'not_human' })
+  })
+  it('admits a new Sentry issue through its row once the table says so, and never before', () => {
+    const issue: Trigger = { id: 's', source: 'sentry', threads: [{ source: 'sentry', id: '42' }],
+      actor: { source: 'sentry', id: '' }, human: false, at: '', text: 'Новая ошибка', meta: { kind: 'issue', issueId: '42', project: 'web' } }
+    const settings = SettingsSchema.parse({ policy: { sources: { sentry: { admission: { issues: { unlistedUnaddressed: 'inferred' } } } } },
+      eval: { mode: 'auto' }, sources: { sentry: { enabled: true, config: { url: 'https://glitchtip.test', orgSlug: 'acme', authToken: 't' } } } })
+    const registry = new SourceRegistry(() => settings)
+    registry.register(sentryKind)
+    const policy = settingsPolicy(settings, registry)
+    expect(policy.gate(issue, thread(), [])).toMatchObject({ admissible: true, strength: 'inferred',
+      basis: { via: 'admission', cell: 'unlistedUnaddressed', row: 'issues', observation: { mode: 'auto' } } })
+    // The cell defaults to ignore, so a configured Source records issues until the table says so.
+    expect(settingsPolicy(SettingsSchema.parse({ policy: {}, eval: { mode: 'auto' },
+      sources: { sentry: { enabled: true, config: { url: 'https://glitchtip.test', orgSlug: 'acme', authToken: 't' } } } }),
+      registry).gate(issue, thread(), [])).toEqual({ admissible: false, reason: 'admission_ignored' })
   })
   it('admits a Feishu bot on its list in a chat the Source observes', () => {
     const settings = SettingsSchema.parse({ ...base, policy: { ...base.policy, sources: { ...base.policy.sources,

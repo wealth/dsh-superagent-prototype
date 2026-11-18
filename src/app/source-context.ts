@@ -26,6 +26,8 @@ export interface SourceContextDeps {
   readonly agentmailProblem?: SetupProblem | undefined
   /** Why the Telegram bot check failed, for the Telegram Source only. */
   readonly telegramProblem?: SetupProblem | undefined
+  /** Why the Sentry account check failed, for the Sentry Source only. */
+  readonly sentryProblem?: SetupProblem | undefined
   /** Hands a Trigger to the Engine and schedules the pass that assesses it. */
   receive(trigger: Trigger): ReceiveResult | Promise<ReceiveResult>
 }
@@ -42,7 +44,7 @@ export function sourceContextOf(deps: SourceContextDeps, kind: { kind: string; h
     commands: deps.commands,
     ready: deps.ready,
     configured: () => deps.configured(),
-    get problem() { return [deps.mattermostProblem, deps.agentmailProblem, deps.telegramProblem, deps.setupProblem].find(problem => problem?.place === kind.kind) },
+    get problem() { return [deps.mattermostProblem, deps.agentmailProblem, deps.telegramProblem, deps.sentryProblem, deps.setupProblem].find(problem => problem?.place === kind.kind) },
     config: <C extends Record<string, unknown>>(id: string) => {
       const instance = deps.sources.instance<C>(id)
       return instance?.enabled ? instance.config : undefined

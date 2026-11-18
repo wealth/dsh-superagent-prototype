@@ -26,7 +26,7 @@ function ProblemLine({ problem, onChanged }: { problem: Problem; onChanged: () =
   switch (problem.kind) {
     // A failed Mattermost bot or AgentMail account check pauses only its Source; other setup problems halt the entire service.
     case 'setup': return row(t(problem.place === 'mattermost' ? 'problemSetupMattermost' : problem.place === 'agentmail' ? 'problemSetupAgentmail'
-      : problem.place === 'telegram' ? 'problemSetupTelegram' : 'problemSetup'),
+      : problem.place === 'telegram' ? 'problemSetupTelegram' : problem.place === 'sentry' ? 'problemSetupSentry' : 'problemSetup'),
       <p className="dt-error"><SetupMessage problem={problem} /></p>,
       setupPage(problem.place), t(`problemSetupFix.${problem.place}`), <CheckSetupButton />)
     case 'no-source': return row(t('problemNoSource'), undefined, settingsRoute('source'), undefined, go(t('actionOpenSources'),

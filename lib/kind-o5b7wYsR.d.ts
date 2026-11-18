@@ -1,4 +1,4 @@
-import { F as Thread, I as ThreadFact, R as ThreadRef, S as ChannelRef, U as Trigger, ct as AgentmailAccount, ft as MattermostBot, h as SourceScope, l as OutboundMessage, m as ScopeResult, pt as TelegramBot, t as ReceiveResult, ut as Deployment, v as AdmissionCell, z as Ticket } from "./intake-DmDrwTW_.js";
+import { F as Thread, I as ThreadFact, R as ThreadRef, S as ChannelRef, U as Trigger, ct as AgentmailAccount, ft as MattermostBot, h as SourceScope, l as OutboundMessage, m as ScopeResult, mt as TelegramBot, pt as SentryAccount, t as ReceiveResult, ut as Deployment, v as AdmissionCell, z as Ticket } from "./intake-DP1lP5GM.js";
 import { Context } from "@deepseek-ai/cordis";
 import { z } from "zod";
 import { MessageId } from "@deepseek-ai/dsh-llm";
@@ -43,6 +43,8 @@ declare class Commands {
   agentmail(): AgentmailAccount;
   /** The Telegram bot of the current deployment, whose token only the Telegram Source's own requests use. */
   telegram(): TelegramBot;
+  /** The Sentry-compatible account of the current deployment, whose token only the Sentry Source's own requests use. */
+  sentry(): SentryAccount;
   /** Runs `git` on PATH using the agent's isolated git environment and credential helper. */
   git(args: string[], cwd: string): Promise<string>;
 }
@@ -508,7 +510,7 @@ declare class SourceRegistry implements SourceScope {
 }
 //#endregion
 //#region src/setup.d.ts
-type SetupPlace = 'deployment' | 'github' | 'mattermost' | 'agentmail' | 'telegram';
+type SetupPlace = 'deployment' | 'github' | 'mattermost' | 'agentmail' | 'telegram' | 'sentry';
 declare const SETUP_PROBLEMS: {
   readonly foreignFile: readonly ["deployment", "{file} was not written by dsh-superagent; move it, or choose another state directory."];
   readonly gitTooOld: readonly ["deployment", "git does not read the github.com credential configuration dsh-superagent writes; dsh-superagent needs git 2.32 or later."];
@@ -534,6 +536,10 @@ declare const SETUP_PROBLEMS: {
   readonly telegramUnreachable: readonly ["telegram", "Telegram did not answer: {output}"];
   readonly telegramUnauthorized: readonly ["telegram", "The Telegram bot token was rejected."];
   readonly telegramNoBot: readonly ["telegram", "Telegram did not report the bot account."];
+  readonly sentryUnset: readonly ["sentry", "The Sentry Source names no server URL, organization or API token."];
+  readonly sentryUnreachable: readonly ["sentry", "The Sentry-compatible server at {url} did not answer: {output}"];
+  readonly sentryUnauthorized: readonly ["sentry", "The Sentry API token was rejected."];
+  readonly sentryOrgMissing: readonly ["sentry", "The organization {org} does not exist under this token."];
 };
 type SetupCode = keyof typeof SETUP_PROBLEMS;
 interface SetupProblem {
@@ -714,6 +720,7 @@ declare const HEALTH_TEXT: {
   readonly mattermostBotMissing: "Waiting for the Mattermost bot";
   readonly agentmailUnset: "The Source is on, and its AgentMail key or inbox is not set";
   readonly telegramUnset: "The Source is on, and its bot token is not set";
+  readonly sentryUnset: "The Source is on, and its server URL, organization or API token is not set";
   readonly pollFailures: "{count} consecutive failed polls; last: {error}";
 };
 type HealthCode = keyof typeof HEALTH_TEXT;
@@ -998,4 +1005,4 @@ interface SourceInstance<C extends Record<string, unknown> = Record<string, unkn
   config: C;
 }
 //#endregion
-export { pollTicketPulls as _, ThreadContext as a, SourceRegistry as b, Retry as c, inject as d, name as f, pollThreads as g, pollRound as h, SourceKind as i, apply as l, pollFailure as m, ChannelLinks as n, SourceContext as o, pollDeploys as p, ContextMessage as r, GithubConfig as s, ChannelLink as t, githubKind as u, GithubComment as v, commentTrigger as y };
+export { pollThreads as _, ThreadContext as a, commentTrigger as b, GithubConfig as c, githubKind as d, inject as f, pollRound as g, pollFailure as h, SourceKind as i, Retry as l, pollDeploys as m, ChannelLinks as n, Health as o, name as p, ContextMessage as r, SourceContext as s, ChannelLink as t, apply as u, pollTicketPulls as v, SourceRegistry as x, GithubComment as y };
