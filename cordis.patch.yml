@@ -101,6 +101,17 @@
               args: ['-y', '@playwright/mcp@latest', '--headless', '--isolated']
               env:
                 PLAYWRIGHT_BROWSERS_PATH: !!js process.env.HOME + '/.dsh/state/browsers'
+          # Persistent memory tools (mcp__memory__*): the official MCP reference memory as a knowledge graph in
+          # <state>/memory.json, durable across tickets and restarts. npx fetches the server on first spawn.
+          - id: memory-mcp
+            name: '@deepseek-ai/dsh-mcp-client'
+            config:
+              serverName: memory
+              transport: stdio
+              command: npx
+              args: ['-y', '@modelcontextprotocol/server-memory@2026.7.4']
+              env:
+                MEMORY_FILE_PATH: !!js process.env.HOME + '/.dsh/state/memory.json'
           - id: compaction
             name: cordis:group
             group: true
@@ -201,6 +212,15 @@
             name: '@deepseek-ai/dsh-tool-skill'
           - id: harness2
             name: dsh-harness2
+          - id: memory-mcp
+            name: '@deepseek-ai/dsh-mcp-client'
+            config:
+              serverName: memory
+              transport: stdio
+              command: npx
+              args: ['-y', '@modelcontextprotocol/server-memory@2026.7.4']
+              env:
+                MEMORY_FILE_PATH: !!js process.env.HOME + '/.dsh/state/memory.json'
           - id: compaction
             name: cordis:group
             group: true
