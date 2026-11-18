@@ -158,7 +158,10 @@ export class Sessions {
     const ctx = this.ctx
     let result = await ctx.sessionController.resolveAgent(id as SessionId)
     if ('error' in result && result.error.code === 'session/not-found') {
-      const workspace = await ctx.workspaceRegistry.create(cwd)
+      // A named workspace keeps the sidebar tree readable: the main Session's workspace is the bundle's root folder, a
+      // ticket's workspace is titled by the ticket. Creation dedupes by path and keeps an existing title, so restarts and
+      // an operator's rename survive.
+      const workspace = await ctx.workspaceRegistry.create(cwd, role === 'orchestrator' ? 'dsh-superagent' : title)
       // A Session keeps the preset it was created with, one of the bundle's own (cordis.patch.yml).
       await ctx.sessionController.create({ sessionId: id as SessionId, workspaceId: workspace.id,
         agentPreset: preset ?? (role === 'worker' ? WORKER_PRESET : ROUTER_PRESET) })

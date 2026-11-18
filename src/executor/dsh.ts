@@ -83,7 +83,7 @@ export interface ExecutorHost {
   /** Where the Executor reports what happened to Assignments and Inputs. */
   readonly engine: Pick<EngineForExecutor, 'assignmentStarted' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed' | 'report'
     | 'assignmentInterrupted'>
-  readonly store: Pick<Store, 'tickets' | 'triggers' | 'get' | 'set' | 'keys' | 'settings' | 'atomic' | 'afterCommit'>
+  readonly store: Pick<Store, 'tickets' | 'triggers' | 'get' | 'set' | 'delete' | 'keys' | 'settings' | 'atomic' | 'afterCommit'>
   /** Durable effect queue through which launches and input deliveries run. */
   readonly effects: Pick<Effects, 'enqueue' | 'handle'>
   /** The `worker` health entry, which reports whether background worker event handling failed. */
@@ -355,7 +355,39 @@ export class DshExecutor implements Executor {
     const registry = (this.host.context as unknown as { workspaceRegistry?: { archivedSessionIds?: readonly string[] } }).workspaceRegistry
     return registry?.archivedSessionIds?.includes(id) === true
   }
-  /** Replaces every live ticket's archived worker Session, on startup and after restarts. */
+  /** The workspace registry, whose archive set hides sessions from the sidebar's default view; absent in some fixtures. */
+  private registry(): {
+    archiveSession(id: string, options?: { stopActivity?: boolean }): Promise<void>
+    unarchiveSession(id: string): Promise<void>
+    resolveByPath(path: string): Promise<{ id: string } | undefined>
+    delete(id: string): Promise<boolean>
+  } | undefined {
+    return (this.host.context as unknown as { workspaceRegistry?: {
+      archiveSession(id: string, options?: { stopActivity?: boolean }): Promise<void>
+      unarchiveSession(id: string): Promise<void>
+      resolveByPath(path: string): Promise<{ id: string } | undefined>
+      delete(id: string): Promise<boolean>
+    } | undefined }).workspaceRegistry
+  }
+  /**
+   * Retires an ended ticket's worker Session: waits for its last turn, archives the session (hidden from the sidebar's
+   * default view and blocked from further steps), and deletes the ticket's workspace so its sidebar folder goes too.
+   * Idempotent; a ticket that resumed before the archive lands is left alone.
+   */
+  async archiveEnded(ticketId: string): Promise<void> {
+    const sessionId = this.workerId(ticketId)
+    const agent = this.host.context.agents.get(sessionId as SessionId)
+    await agent?.whenIdle()
+    const ticket = this.host.store.tickets.get(ticketId)
+    if (!ticket?.ended) return
+    const registry = this.registry()
+    if (registry === undefined) return
+    try { await registry.archiveSession(sessionId, { stopActivity: true }) } catch { /* a session DSH never knew needs no archive */ }
+    this.host.store.set(KV.executor.retired(ticketId), true)
+    const workspace = ticket.execution?.directory ? await registry.resolveByPath(ticket.execution.directory) : undefined
+    if (workspace) await registry.delete(workspace.id).catch(() => { /* the record is already gone */ })
+  }
+  /** Replaces archived sessions of live tickets and retires not-yet-retired ended tickets' workers, on startup and after restarts. */
   async restoreArchived(): Promise<void> {
     for (const name of this.host.store.keys(KV.executor.workerFor)) {
       const ticketId = name.slice(KV.executor.workerFor.prefix.length)
@@ -363,6 +395,9 @@ export class DshExecutor implements Executor {
       if (!ticket || ticket.ended) continue
       const sessionId = this.host.store.get(KV.executor.workerFor(ticketId)) ?? workerSessionId(ticketId)
       if (this.archived(sessionId)) await this.recreateArchivedWorker(ticketId)
+    }
+    for (const ticket of this.host.store.tickets.list()) {
+      if (ticket.ended && !this.host.store.get(KV.executor.retired(ticket.id))) await this.archiveEnded(ticket.id)
     }
   }
 
@@ -516,7 +551,13 @@ export class DshExecutor implements Executor {
       if (!current()) return
     }
     if (!current()) return
-    const sessionId = workerSessionId(ticket.id)
+    // A replaced worker keeps its replacement across the ticket's assignments, and a retired (archived) one — such as a
+    // finished ticket's, which the plugin archives — returns to work when the ticket resumes.
+    const sessionId = this.workerId(ticket.id)
+    if (this.archived(sessionId)) {
+      await this.registry()?.unarchiveSession(sessionId)
+      this.host.store.delete(KV.executor.retired(ticket.id))
+    }
     const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker', workerPreset(ticket))
     if (!current()) return
     // The background work of the Assignment this one replaces stops first, so its end does not clear this one's message.

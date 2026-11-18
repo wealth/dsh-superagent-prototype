@@ -30,6 +30,8 @@ export const AGENTMAIL_INBOX = 'agent@agentmail.test'
 export const SENDER = 'bob@example.test'
 /** Session ids the tests archive; Sessions and the Executor treat them as archived. */
 export const archived: string[] = []
+/** The fake workspace registry's records, by the path each was created for. */
+export const workspaces = new Map<string, { id: string; title?: string }>()
 /** The fake AgentMail inbox, and the replies the fake API received, in order. */
 export const mail: AgentmailMessage[] = []
 export const sentReplies: { body: unknown; key?: string }[] = []
@@ -190,6 +192,8 @@ export function subagentRuntime(agents: Map<string, FakeAgent>) {
 
 /** @param seed - writes to the database before the Runtime opens it, such as records an earlier version stored. */
 export async function startRuntime(seed?: (store: Store) => void) {
+  archived.length = 0
+  workspaces.clear()
   const directory = mkdtempSync(join(tmpdir(), 'orchestrator-host-'))
   const AGENT = join(directory, 'agent-gh')
   const MM_URL = 'https://mattermost.test'
@@ -329,7 +333,25 @@ export async function startRuntime(seed?: (store: Store) => void) {
   const jobs = jobRegistry(id => agents.get(id))
   const subagents = subagentRuntime(agents)
   const services = { agents, llm: { resolveCallConfig: vi.fn(async (value: unknown) => value) }, sessionController: controller,
-    sessionPersistence: persistence, workspaceRegistry: { archivedSessionIds: archived, create: async (cwd: string) => ({ id: cwd }) }, permissionPresets: { set: () => {} }, subprocess, webServer,
+    sessionPersistence: persistence,
+    workspaceRegistry: {
+      archivedSessionIds: archived,
+      create: async (cwd: string, title?: string) => {
+        const known = workspaces.get(cwd)
+        if (known) return { id: known.id, path: cwd, title: known.title, sessionIds: [] }
+        const record = { id: `ws-${workspaces.size + 1}`, title }
+        workspaces.set(cwd, record)
+        return { ...record, path: cwd, sessionIds: [] }
+      },
+      archiveSession: async (sessionId: string) => { if (!archived.includes(sessionId)) archived.push(sessionId) },
+      unarchiveSession: async (sessionId: string) => { const at = archived.indexOf(sessionId); if (at >= 0) archived.splice(at, 1) },
+      resolveByPath: async (path: string) => workspaces.has(path) ? { id: workspaces.get(path)!.id } : undefined,
+      delete: async (id: string) => {
+        for (const [path, record] of workspaces) if (record.id === id) { workspaces.delete(path); return true }
+        return false
+      },
+    },
+    permissionPresets: { set: () => {} }, subprocess, webServer,
     jobs: jobs.service, subagents: subagents.service }
   const ctx = new Context()
   for (const [name, service] of Object.entries(services)) ctx.reflect.provide(name, service)

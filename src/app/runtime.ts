@@ -149,6 +149,9 @@ export class Runtime extends Service implements SourceHost {
             const request = store.triggers.get(ended.origin.triggerId)?.text ?? ''
             for (const message of pullEndNotices(ended, request, setup.deployment.repository)) outbox.send(message)
           }
+          // Retire the ended ticket's worker Session and its sidebar workspace once its last turn settles.
+          if (event.type === 'ticket.ended') void executor.archiveEnded(event.data.ticketId)
+            .catch(error => { ctx.logger.warn('dsh-superagent could not retire the worker of ticket %s: %s', event.data.ticketId, String(error)) })
         } })
       // Update the `evals` health entry on every pass if an evaluation failed as unavailable within the last hour.
       const evals = board.claim('evals', { state: 'ready', detail: 'No unavailable Eval in the last hour' })

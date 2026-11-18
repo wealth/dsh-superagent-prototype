@@ -78,6 +78,8 @@ async function receive(trigger: Trigger, target = runtime) {
 let services: Record<string, unknown>
 /** Session ids the workspace registry reports as archived; a test archives by adding the id here. */
 let archived: string[]
+/** The inline workspace registry's records, by the path each was created for. */
+let workspaces: Map<string, { id: string; title?: string }>
 /** DSH's job registry the Runtime's Executor reads its workers' shell jobs from. */
 let jobs: ReturnType<typeof jobRegistry>
 /** What worker commands of the startup checks print, by argv; an Error makes the command fail with its message. */
@@ -146,8 +148,8 @@ async function route(item: Record<string, unknown>): Promise<Record<string, unkn
 const AGENTMAIL_INBOX = 'agent@agentmail.test', SENDER = 'bob@example.test'
 const mail: AgentmailMessage[] = [], sentReplies: { body: unknown; key?: string }[] = []
 /** Builds an AgentMail trigger the way the Source's poll loop would produce one. */
-function agentmail(id: string, text: string): Trigger {
-  const item: AgentmailMessage = { message_id: `msg_${id}`, thread_id: `th_${id}`, from: SENDER, to: [AGENTMAIL_INBOX],
+function agentmail(id: string, text: string, thread?: string): Trigger {
+  const item: AgentmailMessage = { message_id: `msg_${id}`, thread_id: thread ?? `th_${id}`, from: SENDER, to: [AGENTMAIL_INBOX],
     timestamp: new Date(Date.parse('2026-09-09T00:00:00Z') + Number(id.replace(/\D/g, '') || 0) * 1000).toISOString(), text, labels: [] }
   return agentmailTrigger(item, AGENTMAIL_INBOX)!
 }
@@ -259,7 +261,26 @@ beforeEach(async () => {
   }
   jobs = jobRegistry()
   archived = []
-  services = { agents, llm: { resolveCallConfig: vi.fn(async value => value) }, sessionController: controller, sessionPersistence: { flush: vi.fn(async () => {}), open: vi.fn(async () => ({ read: async () => ({ events: [] }), [Symbol.asyncDispose]: async () => {} })) }, workspaceRegistry: { archivedSessionIds: archived, create: async (cwd: string) => ({ id: cwd }) }, permissionPresets: { set: () => {} }, subprocess, webServer: { host: '127.0.0.1', port: 3082, register: (route: { handler: HttpHandler }) => { http = route.handler; return () => {} } }, jobs: jobs.service }
+  workspaces = new Map()
+  services = { agents, llm: { resolveCallConfig: vi.fn(async value => value) }, sessionController: controller, sessionPersistence: { flush: vi.fn(async () => {}), open: vi.fn(async () => ({ read: async () => ({ events: [] }), [Symbol.asyncDispose]: async () => {} })) },
+    workspaceRegistry: {
+      archivedSessionIds: archived,
+      create: async (cwd: string, title?: string) => {
+        const known = workspaces.get(cwd)
+        if (known) return { ...known, path: cwd, sessionIds: [] }
+        const record = { id: `ws-${workspaces.size + 1}`, title }
+        workspaces.set(cwd, record)
+        return { ...record, path: cwd, sessionIds: [] }
+      },
+      archiveSession: async (sessionId: string) => { if (!archived.includes(sessionId)) archived.push(sessionId) },
+      unarchiveSession: async (sessionId: string) => { const at = archived.indexOf(sessionId); if (at >= 0) archived.splice(at, 1) },
+      resolveByPath: async (path: string) => workspaces.has(path) ? { id: workspaces.get(path)!.id } : undefined,
+      delete: async (id: string) => {
+        for (const [path, record] of workspaces) if (record.id === id) { workspaces.delete(path); return true }
+        return false
+      },
+    },
+    permissionPresets: { set: () => {} }, subprocess, webServer: { host: '127.0.0.1', port: 3082, register: (route: { handler: HttpHandler }) => { http = route.handler; return () => {} } }, jobs: jobs.service }
   for (const [name, service] of Object.entries(services)) ctx.reflect.provide(name, service)
   for (const cli of [AGENT(), OTHER()]) writeFileSync(cli, '#!/bin/sh\n', { mode: 0o755 })
   const store = new Store(join(directory, 'orchestrator.sqlite')); seed(store); store.close()
@@ -400,6 +421,34 @@ it('replaces a worker session the operator archived, and delivers the follow-up 
   expect(agents.has(replacement)).toBe(true)
   await receive(agentmail('2', '顺便看下日志'))
   expect(deliveries.mock.calls.some(([call]) => call.sessionId === replacement)).toBe(true)
+})
+
+it('titles the workspaces it creates after the bundle and the ticket', async () => {
+  const { ticket } = await acceptedTicket(agentmail('1', '修复登录回归'))
+  expect(workspaces.get(directory)!.title).toBe('dsh-superagent')
+  expect(workspaces.get(ticket.execution!.directory)!.title).toBe(ticket.title)
+})
+
+it('archives an ended ticket\'s worker session and removes its sidebar workspace', async () => {
+  const { ticket, sessionId } = await acceptedTicket(agentmail('1', '修复登录回归'))
+  expect(workspaces.has(ticket.execution!.directory)).toBe(true)
+  await runTool(sessionId, 'orchestrator_report', { state: 'dropped', summary: 'nothing to do' })
+  expect(runtime.store.tickets.get(ticket.id)!.ended).toBeDefined()
+  await vi.waitFor(() => expect(archived).toContain(sessionId))
+  expect(workspaces.has(ticket.execution!.directory)).toBe(false)
+})
+
+it('returns an archived worker session to work when its ended ticket resumes', async () => {
+  const { ticket, sessionId } = await acceptedTicket(agentmail('1', '修复登录回归'))
+  await runTool(sessionId, 'orchestrator_report', { state: 'dropped', summary: 'parked' })
+  await vi.waitFor(() => expect(archived).toContain(sessionId))
+  deliveries.mockClear()
+  const again = agentmail('2', 'всё-таки доделай', 'th_1')
+  await receive(again)
+  await runtime.pump(); await runtime.idle()
+  expect(runtime.store.tickets.get(ticket.id)!.ended).toBeUndefined()
+  expect(archived).not.toContain(sessionId)
+  expect(deliveries.mock.calls.some(([call]) => call.sessionId === sessionId)).toBe(true)
 })
 
 it('replaces the main session the operator archived, and relays the next candidate to the replacement', async () => {
