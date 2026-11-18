@@ -116,10 +116,10 @@ it('registers the built-in Source skills, Mattermost only with a Mattermost bot,
   withStore(store => {
     const config = { ...defaultPrompts(), skills: { release: 'Tag releases.' } }
     const skills = promptsOf(store).skills(config)
-    expect(skills.map(([name]) => name)).toEqual(['mattermost', 'github', 'qa', 'release'])
+    expect(skills.map(([name]) => name)).toEqual(['mattermost', 'github', 'qa', 'support', 'release'])
     expect(skills[1]![1]).toContain('## CLI usage')
     expect(skills[2]![1]).toContain('проверьте работу на локальной копии в браузере')
-    expect(new Prompts(store, () => 100000, variables, () => false).skills(config).map(([name]) => name)).toEqual(['github', 'qa', 'release'])
+    expect(new Prompts(store, () => 100000, variables, () => false).skills(config).map(([name]) => name)).toEqual(['github', 'qa', 'support', 'release'])
   })
 })
 

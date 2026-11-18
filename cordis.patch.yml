@@ -154,6 +154,75 @@
             config:
               fetch: false
               searchTimeoutMs: 60000
+    # The agent preset of a support ticket's Executor Session (SUPPORT_PRESET): a reader, not a coder. Code in the ticket
+    # worktree is read-only; prod access (GlitchTip API, logs) is whatever read-only tools the operator grants below.
+    - id: dsh-superagent-support
+      name: dsh-superagent-support
+      config:
+        id: dsh-superagent-support
+        name: dsh-superagent поддержка
+        description: Только для тикетов поддержки dsh-superagent, для ручного выбора не предназначен. Читает код и прод-данные, ничего не меняет.
+        order: 92
+        plugins:
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: shell
+            name: cordis:group
+            group: true
+            isolate:
+              shell: true
+            config:
+              - id: bash-sandbox
+                name: '@deepseek-ai/dsh-bash-sandbox'
+                disabled: !!js process.platform === 'win32'
+                config:
+                  timeoutMs: 5000
+                  maxTimeoutMs: 5000
+              - id: tool-bash
+                name: '@deepseek-ai/dsh-tool-bash'
+                disabled: !!js process.platform === 'win32'
+              - id: tool-pwsh
+                name: '@deepseek-ai/dsh-tool-pwsh'
+                disabled: !!js process.platform !== 'win32'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              write: false
+              edit: false
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+          - id: memory-mcp
+            name: '@deepseek-ai/dsh-mcp-client'
+            config:
+              serverName: memory
+              transport: stdio
+              command: npx
+              args: ['-y', '@modelcontextprotocol/server-memory@2026.7.4']
+              env:
+                MEMORY_FILE_PATH: !!js process.env.HOME + '/.dsh/state/memory.json'
     # The agent preset of the main Session (ROUTER_PRESET in src/app/sessions.ts). The worker's 5-second shell and job waits, so a command or a wait does not hold back the next candidates, and
     # only what the main Session uses: no subagents, web, file search or writes, todo list, questions to a person, presenting,
     # plan mode, plugin manager, scheduling, goals or workflows. No persona: the main Session's prompt is complete, so it has

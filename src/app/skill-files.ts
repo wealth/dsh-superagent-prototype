@@ -21,7 +21,7 @@ function load(name: string) {
   if (!match) throw new Error(`Invalid packaged skill: ${path}`)
   return { name: match[1]!, description: match[2]!, content: match[3]!, path }
 }
-export const bundledSkills = { mattermost: load('mattermost'), github: load('github'), agentmail: load('agentmail'), telegram: load('telegram'), qa: load('qa') }
+export const bundledSkills = { mattermost: load('mattermost'), github: load('github'), agentmail: load('agentmail'), telegram: load('telegram'), qa: load('qa'), support: load('support') }
 /**
  * Loads a built-in prompt file (`prompts/<name>.md`). Source `.md` files are written one sentence per line for
  * readable diffs; `promptFile` joins lines within each paragraph with spaces while keeping blank-line paragraph breaks.

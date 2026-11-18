@@ -13,7 +13,7 @@ import type { Settings } from '../policy.ts'
 import type { Store } from '../app/store.ts'
 import { Later, type Effects } from '../app/effects.ts'
 import { executionRoot, type Variable } from '../app/execution-environment.ts'
-import type { Sessions } from '../app/sessions.ts'
+import { ROUTER_PRESET, SUPPORT_PRESET, WORKER_PRESET, type Sessions } from '../app/sessions.ts'
 import { WorktreeNameSchema } from '../app/assessment.ts'
 import { resultRelay } from '../app/notices.ts'
 import type { HealthEntry } from '../infra/health.ts'
@@ -22,6 +22,11 @@ import { cancelled, collectJob, killJobs, runningJobs, stopBackground, stopSubag
 const now = (): string => new Date().toISOString()
 /** Returns the worker session ID (`worker-<ticketId>`) for a ticket. */
 export const workerSessionId = (ticketId: string): string => `worker-${ticketId}`
+/** A support ticket's Executor Session runs the support preset: its mandate matched the support rule and no implementation rule. */
+export const workerPreset = (ticket: Pick<Ticket, 'mandate'> | undefined): string => {
+  const rules = ticket?.mandate.basis.rules ?? []
+  return rules.includes('support') && !rules.some(rule => rule === 'bugfix' || rule === 'feature') ? SUPPORT_PRESET : WORKER_PRESET
+}
 /** Returns the ticket ID for a worker session ID (`worker-<ticketId>`), or undefined for non-worker sessions. */
 export const ticketOfSession = (sessionId: string): string | undefined => sessionId.startsWith('worker-') ? sessionId.slice('worker-'.length) : undefined
 /** Maximum runtime for a workspace prepare command. */
@@ -312,7 +317,7 @@ export class DshExecutor implements Executor {
         try {
           // Recreate the worker session if it was externally deleted.
           if (!this.host.context.agents.get(sessionId as SessionId)) {
-            await this.host.sessions.ensure(sessionId, ticket.execution?.directory ?? '', ticket.title, 'worker')
+            await this.host.sessions.ensure(sessionId, ticket.execution?.directory ?? '', ticket.title, 'worker', workerPreset(ticket))
           }
           if (input) await this.deliverInput(ticket, assignment, input)
         } catch (error) {
@@ -438,7 +443,7 @@ export class DshExecutor implements Executor {
     }
     if (!current()) return
     const sessionId = workerSessionId(ticket.id)
-    const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker')
+    const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker', workerPreset(ticket))
     if (!current()) return
     // The background work of the Assignment this one replaces stops first, so its end does not clear this one's message.
     await this.stopped(ticket.id)
