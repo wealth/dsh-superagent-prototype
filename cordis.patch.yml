@@ -157,7 +157,7 @@
     # The agent preset of a support ticket's Executor Session (SUPPORT_PRESET): a reader, not a coder. Code in the ticket
     # worktree is read-only; prod access (GlitchTip API, logs) is whatever read-only tools the operator grants below.
     - id: dsh-superagent-support
-      name: dsh-superagent-support
+      name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: dsh-superagent-support
         name: dsh-superagent поддержка
