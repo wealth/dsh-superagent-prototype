@@ -223,6 +223,21 @@
               args: ['-y', '@modelcontextprotocol/server-memory@2026.7.4']
               env:
                 MEMORY_FILE_PATH: !!js process.env.HOME + '/.dsh/state/memory.json'
+          # Prod error tracking (GlitchTip is Sentry-API-compatible): the selfhosted-sentry-mcp server in read-only
+          # mode (write tools hidden). The operator sets SENTRY_URL, SENTRY_AUTH_TOKEN and SENTRY_ORG_SLUG in the
+          # DSH service environment; until then this connection fails without breaking the session.
+          - id: glitchtip-mcp
+            name: '@deepseek-ai/dsh-mcp-client'
+            config:
+              serverName: glitchtip
+              transport: stdio
+              command: npx
+              args: ['-y', 'selfhosted-sentry-mcp@latest']
+              env:
+                SENTRY_URL: !!js process.env.SENTRY_URL || ''
+                SENTRY_AUTH_TOKEN: !!js process.env.SENTRY_AUTH_TOKEN || ''
+                SENTRY_ORG_SLUG: !!js process.env.SENTRY_ORG_SLUG || ''
+                SENTRY_READ_ONLY: !!js 'true'
     # The agent preset of the main Session (ROUTER_PRESET in src/app/sessions.ts). The worker's 5-second shell and job waits, so a command or a wait does not hold back the next candidates, and
     # only what the main Session uses: no subagents, web, file search or writes, todo list, questions to a person, presenting,
     # plan mode, plugin manager, scheduling, goals or workflows. No persona: the main Session's prompt is complete, so it has
