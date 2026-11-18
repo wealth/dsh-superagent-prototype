@@ -76,6 +76,8 @@ async function receive(trigger: Trigger, target = runtime) {
   return result
 }
 let services: Record<string, unknown>
+/** Session ids the workspace registry reports as archived; a test archives by adding the id here. */
+let archived: string[]
 /** DSH's job registry the Runtime's Executor reads its workers' shell jobs from. */
 let jobs: ReturnType<typeof jobRegistry>
 /** What worker commands of the startup checks print, by argv; an Error makes the command fail with its message. */
@@ -256,7 +258,8 @@ beforeEach(async () => {
     inspect: vi.fn(async () => ({ events: [] })),
   }
   jobs = jobRegistry()
-  services = { agents, llm: { resolveCallConfig: vi.fn(async value => value) }, sessionController: controller, sessionPersistence: { flush: vi.fn(async () => {}), open: vi.fn(async () => ({ read: async () => ({ events: [] }), [Symbol.asyncDispose]: async () => {} })) }, workspaceRegistry: { create: async (cwd: string) => ({ id: cwd }) }, permissionPresets: { set: () => {} }, subprocess, webServer: { host: '127.0.0.1', port: 3082, register: (route: { handler: HttpHandler }) => { http = route.handler; return () => {} } }, jobs: jobs.service }
+  archived = []
+  services = { agents, llm: { resolveCallConfig: vi.fn(async value => value) }, sessionController: controller, sessionPersistence: { flush: vi.fn(async () => {}), open: vi.fn(async () => ({ read: async () => ({ events: [] }), [Symbol.asyncDispose]: async () => {} })) }, workspaceRegistry: { archivedSessionIds: archived, create: async (cwd: string) => ({ id: cwd }) }, permissionPresets: { set: () => {} }, subprocess, webServer: { host: '127.0.0.1', port: 3082, register: (route: { handler: HttpHandler }) => { http = route.handler; return () => {} } }, jobs: jobs.service }
   for (const [name, service] of Object.entries(services)) ctx.reflect.provide(name, service)
   for (const cli of [AGENT(), OTHER()]) writeFileSync(cli, '#!/bin/sh\n', { mode: 0o755 })
   const store = new Store(join(directory, 'orchestrator.sqlite')); seed(store); store.close()
@@ -385,6 +388,29 @@ it('accepts silently under a rule that says so, gives the worker the rule proced
   await runTool(`worker-${ticket.id}`, 'orchestrator_report', { state: 'dropped', summary: 'too complex; recorded in #123' })
   expect(runtime.store.tickets.get(ticket.id)).toMatchObject({ ended: expect.objectContaining({ by: 'executor', outcome: 'dropped' }) })
   expect(await runTool(runtime.masterId, 'orchestrator_reply', { ticket_id: ticket.id, purpose: 'result', text: '看到这个问题我试了一下，能复现，修复需要较大改动，已记在 #123。' })).toEqual({ status: 'sent' })
+})
+
+it('replaces a worker session the operator archived, and delivers the follow-up to the replacement', async () => {
+  const { trigger, ticket, sessionId } = await acceptedTicket(agentmail('1', '修复登录回归'))
+  agents.get(sessionId)!.status = 'idle'
+  archived.push(sessionId)
+  await (runtime as unknown as { ctx: Context }).ctx.parallel('workspace/session-stop', { sessionId } as never)
+  await runtime.idle()
+  const replacement = `worker-${ticket.id}-r1`
+  expect(agents.has(replacement)).toBe(true)
+  await receive(agentmail('2', '顺便看下日志'))
+  expect(deliveries.mock.calls.some(([call]) => call.sessionId === replacement)).toBe(true)
+})
+
+it('replaces the main session the operator archived, and relays the next candidate to the replacement', async () => {
+  const archivedMaster = runtime.masterId
+  archived.push(archivedMaster)
+  await (runtime as unknown as { ctx: Context }).ctx.parallel('workspace/session-stop', { sessionId: archivedMaster } as never)
+  expect(runtime.masterId).toBe(`${archivedMaster}-r1`)
+  expect(agents.has(runtime.masterId)).toBe(true)
+  const followup = agentmail('2', '再问一次')
+  await receive(followup)
+  expect(relays(runtime.masterId).some(item => item.trigger_id === followup.id)).toBe(true)
 })
 
 it('records worker reports, binds the task PR, ends the ticket on ready without a PR, and relays attention', async () => {

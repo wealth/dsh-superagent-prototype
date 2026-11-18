@@ -29,8 +29,8 @@ export const KV = {
   prompts: { revision: record<number>('prompt-revision'), version: family<PromptVersion, [revision: number]>('prompt-version:'),
     /** The built-in text of a prompt part an override was edited from, by its `base`, which shows what an upgrade changed. */
     builtIn: family<string, [base: string]>('prompt-built-in:') },
-  /** Runtime: the main Session's ID. */
-  runtime: { masterId: record<string>('master-id') },
+  /** Runtime: the main Session's ID, and its replacement generations after operator archives. */
+  runtime: { masterId: record<string>('master-id'), masterRuns: record<number>('master-runs') },
   /** Sessions: prompt revisions each Session has worked under, ordered oldest first; the last entry (`.at(-1)`) is its active revision. */
   sessions: { prompts: family<number[], [session: string]>('session-prompts:') },
   /** Schema 11 migration: legacy main-Session queues imported into the effect table. */
@@ -45,6 +45,8 @@ export const KV = {
     unauthenticated: record<{ count: number; at: string }>('agentmail-unauthenticated') },
   /** Telegram Source: the getUpdates offset so a restart never replays handled updates. */
   telegram: { offset: record<number>('telegram-offset') },
+  /** Executor: the worker Session that runs each ticket after an archive replacement, the reverse mapping, and the worker replacement generations. */
+  executor: { workerFor: family<string, [ticketId: string]>('worker-session:'), ticketFor: family<string, [sessionId: string]>('worker-ticket:'), workerRuns: record<number>('worker-runs') },
   /**
    * GitHub Source: notification cursor and pending retries; per-Issue/PR read cursor shared by notification and polled reads;
    * per-stream cursor, start times by kind, and ETag; default-branch CI state; and per-PR CI fingerprint and revision (`revision`

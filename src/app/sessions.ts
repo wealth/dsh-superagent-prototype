@@ -7,7 +7,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import { dirname } from 'node:path'
 import { z } from 'zod'
 import { key, liveTicket, type Ticket } from '../core/index.ts'
-import { mandateInstructions, ticketOfSession, workerPreset } from '../executor/dsh.ts'
+import { KV } from '../kv.ts'
+import { mandateInstructions, sessionTicket, ticketOfSession, workerPreset } from '../executor/dsh.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { AgentDelivery, messageId } from './delivery.ts'
 import type { Effects } from './effects.ts'
@@ -17,7 +18,6 @@ import { initializeRoleModel } from './role-models.ts'
 import { bundledSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
-import { KV } from '../kv.ts'
 import type { RegisterTool, Tool } from './tools/tool.ts'
 
 /** Host dependencies used by `Sessions`. */
@@ -32,6 +32,8 @@ export interface SessionsHost {
   readonly masterId: string
   readonly lifetime: AbortSignal
   closing(): boolean
+  /** Creates a replacement main Session after the operator archived the current one (Runtime owns the rebinding). */
+  recreateMaster(): Promise<void>
   /** Execution environment variables for `ticket`, rendered into its worker's system prompt. */
   environment(ticket: Ticket): Variable[]
   /** Tools to register on the main Session (`ticket === undefined`) or on `ticket`'s worker Session. */
@@ -101,8 +103,19 @@ export class Sessions {
     this.ctx = host.context
     this.agentDelivery = new AgentDelivery(host.context)
     // Deliver relays and notices to the main Session in the order they were queued.
-    host.effects.handle('relay', ({ text }, requestId) => this.prompt(host.masterId, requestId, text, 'steer'), { ordered: true })
+    host.effects.handle('relay', ({ text }, requestId) => this.prompt(this.master(), requestId, text, 'steer'), { ordered: true })
     host.effects.handle('notice', ({ value, summary }, name) => this.inject(name, value, summary), { ordered: true })
+  }
+  /** The current main Session's id: the store is the truth after an archive replacement. */
+  private master(): string { return this.host.store.get(KV.runtime.masterId) ?? this.host.masterId }
+  /** Whether DSH's workspace registry lists the session as archived; absent in unit-test fixtures. */
+  archived(id: string): boolean {
+    const registry = (this.ctx as { workspaceRegistry?: { archivedSessionIds?: readonly string[] } }).workspaceRegistry
+    return registry?.archivedSessionIds?.includes(id) === true
+  }
+  /** Replaces the archived main Session on startup and after restarts; the Executor replaces its own worker Sessions. */
+  async restoreArchived(): Promise<void> {
+    if (this.archived(this.master())) await this.host.recreateMaster()
   }
   /** Subscribes to host agent and session events so newly created sessions are decorated and model-budget retries are reflected in health. Call once at startup. */
   install(): void {
@@ -119,12 +132,17 @@ export class Sessions {
       this.updateModelHealth()
     })
     ctx.on('agent/created', async ({ agent }) => { await this.decorate(agent); return undefined })
+    // The operator archiving the main Session replaces it (worker Sessions are the Executor's concern): the Runtime
+    // creates a fresh one and rebinds its id in the store, so relays and notices follow.
+    ctx.on('workspace/session-stop', ({ sessionId }: { sessionId: SessionId }) => {
+      if (sessionId === this.master()) return this.host.recreateMaster().catch(error => { this.ctx.logger?.warn('dsh-superagent master re-creation failed: %s', String(error)) })
+    })
     // Opening a Session in DSH's Web UI before its first turn may select the default preset for it: select ours again. After
     // its first turn DSH refuses any selection, which leaves it as it is.
     ctx.inject(['agentPresets'], child => {
       child.on('agent-preset/selected', (sessionId, preset) => {
-        const ticketId = ticketOfSession(sessionId), agent = ctx.agents.get(sessionId as SessionId)
-        const ticket = ticketId && this.host.store.tickets.get(ticketId)
+        const agent = ctx.agents.get(sessionId as SessionId)
+        const ticket = ticketOfSession(sessionId) ? sessionTicket(this.host.store, sessionId) : undefined
         const ours = sessionId === this.host.masterId ? ROUTER_PRESET : ticket ? workerPreset(ticket) : undefined
         if (!ours || preset === ours || !agent) return
         const presets = child.get('agentPresets') as { select(agent: Agent, preset: string): Promise<string> }
@@ -179,7 +197,7 @@ export class Sessions {
   }
   /** Injects a notice into the main Session without waking it; no-op if the main Session does not exist yet. */
   private async inject(name: string, value: Record<string, unknown>, summary: string): Promise<void> {
-    const resolved = await this.ctx.sessionController.resolveAgent(this.host.masterId as SessionId)
+    const resolved = await this.ctx.sessionController.resolveAgent(this.master() as SessionId)
     if ('error' in resolved) return
     // Deduplicate by notice name and payload hash so retries are idempotent while updated payloads still deliver.
     const text = JSON.stringify(value)
@@ -227,8 +245,9 @@ export class Sessions {
       : { state: 'ready', detail: 'No managed Session is waiting on a model budget retry' })
   }
   private ticketOf(agent: Agent): Ticket | undefined {
-    const ticketId = ticketOfSession(agent.id)
-    return ticketId === undefined ? undefined : this.host.store.tickets.get(ticketId)
+    const direct = ticketOfSession(agent.id)
+    if (direct === undefined) return undefined
+    return this.host.store.tickets.get(direct) ?? sessionTicket(this.host.store, agent.id)
   }
   private async decorate(agent: Agent): Promise<void> {
     if (this.bindings.has(agent)) return
@@ -307,9 +326,10 @@ export class Sessions {
     for (let depth = 0; parent !== undefined && ticketOfSession(parent) === undefined && depth < 8; depth++) {
       parent = this.ctx.agents.get(parent)?.session.header.parentSession
     }
-    const ticketId = parent === undefined ? undefined : ticketOfSession(parent)
-    if (ticketId === undefined || !this.host.store.tickets.get(ticketId)) return
-    this.bindings.set(agent, { disposers: this.workOnly(agent, ticketId), subagent: true })
+    // A replacement worker's id carries a generation (`worker-<ticketId>-r<n>`), which the direct parse misreads.
+    const parentTicket = parent !== undefined && ticketOfSession(parent) !== undefined ? sessionTicket(this.host.store, parent) : undefined
+    if (parentTicket === undefined) return
+    this.bindings.set(agent, { disposers: this.workOnly(agent, parentTicket.id), subagent: true })
   }
   /** Register the skills of a prompt version in the agent's skill scope, in place of an earlier version's. */
   private bindSkills(binding: SessionBinding, version: PromptVersion): void {

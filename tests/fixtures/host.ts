@@ -28,6 +28,8 @@ export const CHAT = 'chan0000000000000000000001'
 const BOT_ID = 'botuser0000000000000000001'
 export const AGENTMAIL_INBOX = 'agent@agentmail.test'
 export const SENDER = 'bob@example.test'
+/** Session ids the tests archive; Sessions and the Executor treat them as archived. */
+export const archived: string[] = []
 /** The fake AgentMail inbox, and the replies the fake API received, in order. */
 export const mail: AgentmailMessage[] = []
 export const sentReplies: { body: unknown; key?: string }[] = []
@@ -327,7 +329,7 @@ export async function startRuntime(seed?: (store: Store) => void) {
   const jobs = jobRegistry(id => agents.get(id))
   const subagents = subagentRuntime(agents)
   const services = { agents, llm: { resolveCallConfig: vi.fn(async (value: unknown) => value) }, sessionController: controller,
-    sessionPersistence: persistence, workspaceRegistry: { create: async (cwd: string) => ({ id: cwd }) }, permissionPresets: { set: () => {} }, subprocess, webServer,
+    sessionPersistence: persistence, workspaceRegistry: { archivedSessionIds: archived, create: async (cwd: string) => ({ id: cwd }) }, permissionPresets: { set: () => {} }, subprocess, webServer,
     jobs: jobs.service, subagents: subagents.service }
   const ctx = new Context()
   for (const [name, service] of Object.entries(services)) ctx.reflect.provide(name, service)
