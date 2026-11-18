@@ -84,6 +84,10 @@
             name: '@deepseek-ai/dsh-skill-filesystem'
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
+          # The installed dsh-harness2 plugin: its refine/status/reset tools and the adopted harness's always-on text
+          # reach this session's scope from here; top-level registration alone does not reach worker sessions.
+          - id: harness2
+            name: dsh-harness2
           # The official Playwright MCP server: interactive browser tools (mcp__playwright__browser_*) for the QA
           # protocol in the dsh-superagent-qa skill, headless so no display is needed. Remove this entry, or set
           # disabled: true, for repositories that never change UI. Browsers install once per machine into
@@ -195,6 +199,8 @@
             name: '@deepseek-ai/dsh-skill-filesystem'
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
+          - id: harness2
+            name: dsh-harness2
           - id: compaction
             name: cordis:group
             group: true
