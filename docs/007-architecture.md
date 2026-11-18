@@ -418,6 +418,7 @@ Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsub
 | `tests/registry.spec.ts` | `SourceRegistry`: экземпляры, проверка, части Политики, Каналы и контекст Треда |
 | `tests/sources.spec.ts` | Источники Feishu и GitHub на `SourceContext`: трансляция, опросы и позиции чтения, правила pull request'ов, здоровье |
 | `tests/agentmail.spec.ts` | Источник AgentMail: трансляция писем, опрос ящика и курсоры, канал ответов с идемпотентностью, части политики |
+| `tests/telegram.spec.ts` | Источник Telegram: трансляция сообщений, длинный опрос и смещение, канал ответов, части политики |
 | `tests/commands.spec.ts` | Вызовы CLI как аккаунты развёртывания, ответы Каналов и вызовы GitHub с ограничением по репозиторию |
 | `tests/github-read.spec.ts` | Чтения GitHub |
 | `tests/admission-context.spec.ts` | Окно Треда оценок |

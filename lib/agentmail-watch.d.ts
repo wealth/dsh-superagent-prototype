@@ -1,5 +1,5 @@
-import { S as ChannelRef, U as Trigger, ct as AgentmailAccount, l as OutboundMessage, pt as resolveAgentmail } from "./intake-8_Cr7w_z.js";
-import { a as ThreadContext, i as SourceKind, n as ChannelLinks, o as SourceContext, t as ChannelLink } from "./kind-CWO16A0Q.js";
+import { S as ChannelRef, U as Trigger, ct as AgentmailAccount, l as OutboundMessage, mt as resolveAgentmail } from "./intake-DmDrwTW_.js";
+import { a as ThreadContext, i as SourceKind, n as ChannelLinks, o as SourceContext, t as ChannelLink } from "./kind-Cp_d4Wsz.js";
 import { Context } from "@deepseek-ai/cordis";
 import { z } from "zod";
 //#region src/sources/agentmail-trigger.d.ts

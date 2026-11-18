@@ -1,4 +1,4 @@
-import { F as Thread, I as ThreadFact, R as ThreadRef, S as ChannelRef, U as Trigger, ct as AgentmailAccount, ft as MattermostBot, h as SourceScope, l as OutboundMessage, m as ScopeResult, t as ReceiveResult, ut as Deployment, v as AdmissionCell, z as Ticket } from "./intake-8_Cr7w_z.js";
+import { F as Thread, I as ThreadFact, R as ThreadRef, S as ChannelRef, U as Trigger, ct as AgentmailAccount, ft as MattermostBot, h as SourceScope, l as OutboundMessage, m as ScopeResult, pt as TelegramBot, t as ReceiveResult, ut as Deployment, v as AdmissionCell, z as Ticket } from "./intake-DmDrwTW_.js";
 import { Context } from "@deepseek-ai/cordis";
 import { z } from "zod";
 import { DatabaseSync } from "node:sqlite";
@@ -41,6 +41,8 @@ declare class Commands {
   mattermost(): MattermostBot;
   /** The AgentMail account of the current deployment, whose key only the AgentMail Source's own requests use. */
   agentmail(): AgentmailAccount;
+  /** The Telegram bot of the current deployment, whose token only the Telegram Source's own requests use. */
+  telegram(): TelegramBot;
   /** Runs `git` on PATH using the agent's isolated git environment and credential helper. */
   git(args: string[], cwd: string): Promise<string>;
 }
@@ -506,7 +508,7 @@ declare class SourceRegistry implements SourceScope {
 }
 //#endregion
 //#region src/setup.d.ts
-type SetupPlace = 'deployment' | 'github' | 'mattermost' | 'agentmail';
+type SetupPlace = 'deployment' | 'github' | 'mattermost' | 'agentmail' | 'telegram';
 declare const SETUP_PROBLEMS: {
   readonly foreignFile: readonly ["deployment", "{file} was not written by dsh-superagent; move it, or choose another state directory."];
   readonly gitTooOld: readonly ["deployment", "git does not read the github.com credential configuration dsh-superagent writes; dsh-superagent needs git 2.32 or later."];
@@ -528,6 +530,10 @@ declare const SETUP_PROBLEMS: {
   readonly agentmailUnreachable: readonly ["agentmail", "AgentMail did not answer: {output}"];
   readonly agentmailUnauthorized: readonly ["agentmail", "The AgentMail API key was rejected."];
   readonly agentmailInboxMissing: readonly ["agentmail", "The inbox {inbox} does not exist under this AgentMail account."];
+  readonly telegramUnset: readonly ["telegram", "The Telegram Source names no bot token."];
+  readonly telegramUnreachable: readonly ["telegram", "Telegram did not answer: {output}"];
+  readonly telegramUnauthorized: readonly ["telegram", "The Telegram bot token was rejected."];
+  readonly telegramNoBot: readonly ["telegram", "Telegram did not report the bot account."];
 };
 type SetupCode = keyof typeof SETUP_PROBLEMS;
 interface SetupProblem {
@@ -686,6 +692,7 @@ declare const HEALTH_TEXT: {
   readonly mattermostUnset: "The Source is on, and its Mattermost server or bot token is not set";
   readonly mattermostBotMissing: "Waiting for the Mattermost bot";
   readonly agentmailUnset: "The Source is on, and its AgentMail key or inbox is not set";
+  readonly telegramUnset: "The Source is on, and its bot token is not set";
   readonly pollFailures: "{count} consecutive failed polls; last: {error}";
 };
 type HealthCode = keyof typeof HEALTH_TEXT;
