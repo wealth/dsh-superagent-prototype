@@ -85,7 +85,7 @@ function closePull(ctx: SourceContext, pr: Pull): void {
 /**
  * Builds idempotent outbound notices for IM conversations when a ticket ends with its PR (selecting the last-closed PR it
  * opened, else the last one it followed). The notice language follows the ticket's source request: Chinese when it contains
- * Han characters and no kana, otherwise English.
+ * Han characters and no kana, Russian when it contains Cyrillic, otherwise English.
  */
 export function pullEndNotices(ticket: Ticket, request: string, repository: string): OutboundMessage[] {
   const outcome = ticket.ended?.outcome
@@ -96,9 +96,12 @@ export function pullEndNotices(ticket: Ticket, request: string, repository: stri
   const number = pullNumber(follow.thread)!
   const url = githubPage(repository, number, true)
   const chinese = /\p{Script=Han}/u.test(request) && !/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(request)
+  const russian = /\p{Script=Cyrillic}/u.test(request)
   const text = chinese
     ? outcome === 'merged' ? `[PR #${number}](${url}) 已合并。` : `[PR #${number}](${url}) 已关闭，未合并。`
-    : outcome === 'merged' ? `[PR #${number}](${url}) has merged.` : `[PR #${number}](${url}) was closed without merging.`
+    : russian
+      ? outcome === 'merged' ? `[PR #${number}](${url}) вмержен.` : `[PR #${number}](${url}) закрыт без мержа.`
+      : outcome === 'merged' ? `[PR #${number}](${url}) has merged.` : `[PR #${number}](${url}) was closed without merging.`
   // GitHub timelines and linked issues already show the merge or closure, so GitHub channels are skipped.
   return ticket.channels.filter(channel => channel.source !== SOURCE).map(channel => ({
     id: key('pr-terminal', String(number), channel.source, JSON.stringify(channel.address), outcome), channel, text, kind: 'notice', ticketId: ticket.id }))

@@ -112,6 +112,7 @@ declare const SettingsSchema: z.ZodObject<{
       model: z.ZodString;
       reasoningEffort: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>>;
+    prNotices: z.ZodDefault<z.ZodBoolean>;
     maxWorkers: z.ZodDefault<z.ZodNumber>;
     directory: z.ZodDefault<z.ZodString>;
     prepare: z.ZodDefault<z.ZodString>;
@@ -178,6 +179,7 @@ declare class SourceRegistry implements SourceScope {
         model: string;
         reasoningEffort?: string | undefined;
       } | null;
+      prNotices: boolean;
       maxWorkers: number;
       directory: string;
       prepare: string;
@@ -223,6 +225,7 @@ declare class SourceRegistry implements SourceScope {
         model: string;
         reasoningEffort?: string | undefined;
       } | null;
+      prNotices: boolean;
       maxWorkers: number;
       directory: string;
       prepare: string;
@@ -280,6 +283,7 @@ declare class SourceRegistry implements SourceScope {
         model: string;
         reasoningEffort?: string | undefined;
       } | null;
+      prNotices: boolean;
       maxWorkers: number;
       directory: string;
       prepare: string;
@@ -332,6 +336,7 @@ declare class SourceRegistry implements SourceScope {
         model: string;
         reasoningEffort?: string | undefined;
       } | null;
+      prNotices: boolean;
       maxWorkers: number;
       directory: string;
       prepare: string;
@@ -380,6 +385,7 @@ declare class SourceRegistry implements SourceScope {
         model: string;
         reasoningEffort?: string | undefined;
       } | null;
+      prNotices: boolean;
       maxWorkers: number;
       directory: string;
       prepare: string;
@@ -441,6 +447,7 @@ declare class SourceRegistry implements SourceScope {
         model: string;
         reasoningEffort?: string | undefined;
       } | null;
+      prNotices: boolean;
       maxWorkers: number;
       directory: string;
       prepare: string;
@@ -487,6 +494,7 @@ declare class SourceRegistry implements SourceScope {
         model: string;
         reasoningEffort?: string | undefined;
       } | null;
+      prNotices: boolean;
       maxWorkers: number;
       directory: string;
       prepare: string;

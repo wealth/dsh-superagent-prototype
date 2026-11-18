@@ -255,7 +255,7 @@ describe('settings migration', () => {
       sources: { mattermost: { enabled: false, config: { channels: [{ channelId: CHAT, listen: 'mentions' }, { channelId: OBSERVED, listen: 'all' }], directMessages: false } }, github: { enabled: true, config: { pollSeconds: 120 } } },
       policy: { rules: [], sources: { mattermost: { allowed: [], admission: {} }, github: { allowed: [{ id: 'a' }], admission: {} } } },
       eval: { mode: 'auto', timeoutSeconds: 90, model: { provider: 'p', model: 'm' } },
-      executor: { model: null, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [] },
+      executor: { model: null, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [], prNotices: true },
     })
     expect(migrateSettings(migrated)).toEqual(migrated)
   })
@@ -484,4 +484,16 @@ describe('bots and events without a sender', () => {
       ['comments', { listedUnaddressed: false, unlistedAddressed: true, unlistedUnaddressed: false }],
       ['ci', { listedUnaddressed: false, unlistedAddressed: false, unlistedUnaddressed: false }]])
   })
+})
+
+it('exposes the PR notices switch to the execution environment as 1 or an empty value', async () => {
+  const { environmentOf, declaredVariables } = await import('../src/app/execution-environment.ts')
+  const sources = new SourceRegistry(() => SettingsSchema.parse({}))
+  const deployment = { stateDir: '/s', promptMaxChars: { get: () => 0 } as never, admissionContextMaxPages: { get: () => 0 } as never,
+    admissionContextTimeoutMs: { get: () => 0 } as never, repository: 'acme/widgets', github: { cli: '/bin/false', login: 'a', noreply: 'x' } }
+  const values = (prNotices: boolean) => Object.fromEntries(environmentOf({ deployment, sources,
+    settings: SettingsSchema.parse({ executor: { prNotices } }) }).map(variable => [variable.key, variable.value]))
+  expect(values(true).DSH_SUPERAGENT_PR_NOTICES).toBe('1')
+  expect(values(false).DSH_SUPERAGENT_PR_NOTICES).toBe('')
+  expect(declaredVariables(sources).at(0)!.variables.map(variable => variable.key)).toContain('DSH_SUPERAGENT_PR_NOTICES')
 })

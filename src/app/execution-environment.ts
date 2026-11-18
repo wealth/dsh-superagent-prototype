@@ -12,6 +12,7 @@ export const EXECUTOR_VARIABLES: readonly (VariableSpec & { ticket?: true })[] =
   { key: 'DSH_SUPERAGENT_NAME', ticket: true, description: { zh: '工单的短名，也是执行目录的名字', en: 'The ticket\'s short name, also its directory\'s name', ru: 'Короткое имя тикета; оно же имя каталога выполнения' } },
   { key: 'DSH_SUPERAGENT_TICKET', ticket: true, description: { zh: '工单 id', en: 'The ticket id', ru: 'ID тикета' } },
   { key: 'DSH_SUPERAGENT_BLOCKED_COMMANDS', description: { zh: '这个执行环境禁止调用的命令，以空格分隔；不要运行它们', en: 'Commands blocked in this execution environment, separated by spaces; never run them', ru: 'Команды, запрещённые в этой среде выполнения, через пробел; не запускайте их' } },
+  { key: 'DSH_SUPERAGENT_PR_NOTICES', description: { zh: '开启时（“1”），允许在来源聊天中发送 PR 就绪和合并的通知；为空时禁止它们', en: 'Set to "1" when PR readiness and merge notices in the source conversation are allowed; empty when they are forbidden', ru: '«1», когда разрешены уведомления о готовности и мерже PR в чате источника; пусто, когда они запрещены' } },
 ]
 export interface Variable { key: string; value: string; description: Localized; owner: string }
 
@@ -26,7 +27,8 @@ export function declaredVariables(sources: SourceRegistry, settings?: Settings):
 
 export function environmentOf(input: { deployment: Deployment; sources: SourceRegistry; settings: Settings; ticket?: { id: string; name: string; directory: string }; trigger?: Trigger }): Variable[] {
   const { deployment, sources, settings, ticket, trigger } = input
-  const executor: Record<string, string> = { DSH_SUPERAGENT_BLOCKED_COMMANDS: settings.executor.blockedCommands.join(' '), ...ticket ? { DSH_SUPERAGENT_DIR: ticket.directory, DSH_SUPERAGENT_NAME: ticket.name, DSH_SUPERAGENT_TICKET: ticket.id } : {} }
+  const executor: Record<string, string> = { DSH_SUPERAGENT_BLOCKED_COMMANDS: settings.executor.blockedCommands.join(' '),
+    DSH_SUPERAGENT_PR_NOTICES: settings.executor.prNotices ? '1' : '', ...ticket ? { DSH_SUPERAGENT_DIR: ticket.directory, DSH_SUPERAGENT_NAME: ticket.name, DSH_SUPERAGENT_TICKET: ticket.id } : {} }
   const result: Variable[] = EXECUTOR_VARIABLES.filter(spec => !spec.ticket || ticket).map(spec => ({ key: spec.key, value: executor[spec.key] ?? '', description: spec.description, owner: 'executor' }))
   for (const { kind, environment, config } of sources.environments(settings)) {
     const values = environment.values({ deployment, config, ...trigger ? { trigger } : {} })
