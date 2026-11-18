@@ -157,6 +157,8 @@ Check dsh-superagent: run `scripts/dsh-superagent --profile superagent status` i
    Для UI-тикетов добавьте в конец команды подготовку браузерных проверок (навык `dsh-superagent-qa`), кэшируя браузер между тикетами:
    `cd "$DSH_SUPERAGENT_DIR" && npm ci && PLAYWRIGHT_BROWSERS_PATH=$HOME/.dsh/state/browsers npx playwright install chromium`.
 
+   Воркеры получают интерактивные браузерные инструменты `mcp__playwright__browser_*` (официальный сервер `@playwright/mcp`, headless) из пресета исполнителя; первому запуску нужен доступ в сеть, чтобы npx скачал сервер, а браузер ставится командой выше.
+
    Перечислите личные CLI, например выполнившие вход в ваш собственный аккаунт, как заблокированные команды.
 4. **Prompts.** Задайте разделы команды: строку раскрытия на GitHub, ботов ревью, автора коммита и условие автоматического слияния.
 
