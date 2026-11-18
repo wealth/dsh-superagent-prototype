@@ -154,6 +154,9 @@ Check dsh-superagent: run `scripts/dsh-superagent --profile superagent status` i
    git -C /home/me/src/widgets worktree add -b "agent/$DSH_SUPERAGENT_NAME" "$DSH_SUPERAGENT_DIR" "refs/dsh-superagent/$DSH_SUPERAGENT_TICKET"
    ```
 
+   Для UI-тикетов добавьте в конец команды подготовку браузерных проверок (навык `dsh-superagent-qa`), кэшируя браузер между тикетами:
+   `cd "$DSH_SUPERAGENT_DIR" && npm ci && PLAYWRIGHT_BROWSERS_PATH=$HOME/.dsh/state/browsers npx playwright install chromium`.
+
    Перечислите личные CLI, например выполнившие вход в ваш собственный аккаунт, как заблокированные команды.
 4. **Prompts.** Задайте разделы команды: строку раскрытия на GitHub, ботов ревью, автора коммита и условие автоматического слияния.
 

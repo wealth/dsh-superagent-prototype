@@ -83,7 +83,7 @@ const RULES: [rule: string, file: string, says: string[], gone?: string[]][] = [
   ['An Executor asks through human_action and clears the question explicitly', 'handoff-worker', ['human_action:null или отчёт ready очищает его', 'state может оставаться progress']],
   ['The main Session investigates nothing outside an assessment', 'dispatch', ['Вне проактивной оценки не следуй по ссылкам контекста']],
   ['A UI change carries before-and-after evidence, as a delivery requirement the team can change', 'team/delivery',
-    ['описание PR должно содержать И Before, И After визуальные доказательства', 'Захватывай тот же сценарий, вьюпорт, тему и релевантное состояние UI', 'Доказательство только After неполно',
+    ['прогоните протокол навыка `dsh-superagent-qa`', 'описание PR содержит И Before, И After визуальные доказательства', 'Захватывай тот же сценарий, вьюпорт, тему и релевантное состояние UI', 'Доказательство только After неполно',
       'а не макет, поданный как предыдущая реализация', 'с указанием исходной и изменённой ревизии', 'не заявляй, что PR UI готов']],
   ['Human attention is limited', 'team/communication', ['Человеческое внимание ограничено']],
   ['Each automated reviewer gets at most three rounds per PR', 'team/communication', ['максимум три раунда ревью на PR от каждого автоматизированного ревьюера']],

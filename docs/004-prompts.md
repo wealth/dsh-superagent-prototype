@@ -24,7 +24,8 @@
 | Общие инструкции и роли | `runtime/shared`, `runtime/orchestrator`, `runtime/worker` |
 | Рабочие инструкции | `runtime/subscriptions`, `runtime/replies`, `runtime/dispatch`, `runtime/work`, `runtime/admission` |
 | Инструкции передачи | `runtime/handoff/orchestrator`, `runtime/handoff/worker` |
-| Навыки Источников | `skill/feishu`, `skill/github` |
+| Навыки Источников | `skill/feishu`, `skill/github`, `skill/agentmail`, `skill/telegram` |
+| Навык проверки | `skill/qa` — протокол локальной копии в браузере: снимки до/после, дифф, локали |
 | Генерируемые секции | `runtime/environment`, `runtime/policy`, `runtime/policy/none` |
 
 Генерируемые секции — редактируемые шаблоны. Они должны сохранять эти плейсхолдеры:
