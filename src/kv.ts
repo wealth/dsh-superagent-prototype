@@ -43,6 +43,8 @@ export const KV = {
   /** AgentMail Source: the inbox poll cursor, and the last message id each read thread ended with. */
   agentmail: { since: record<string>('agentmail-since'), thread: family<{ lastMessageId: string; lastAt: string }, [thread: string]>('agentmail-thread:'),
     unauthenticated: record<{ count: number; at: string }>('agentmail-unauthenticated') },
+  /** Telegram Source: the getUpdates offset so a restart never replays handled updates. */
+  telegram: { offset: record<number>('telegram-offset') },
   /**
    * GitHub Source: notification cursor and pending retries; per-Issue/PR read cursor shared by notification and polled reads;
    * per-stream cursor, start times by kind, and ETag; default-branch CI state; and per-PR CI fingerprint and revision (`revision`

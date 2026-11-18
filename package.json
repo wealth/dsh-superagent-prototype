@@ -17,6 +17,7 @@
     "./github-watch": "./lib/github-watch.js",
     "./mattermost-watch": "./lib/mattermost-watch.js",
     "./agentmail-watch": "./lib/agentmail-watch.js",
+    "./telegram-watch": "./lib/telegram-watch.js",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },

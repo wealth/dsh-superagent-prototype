@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Config, executable, machineOf, resolveAgentmail, resolveDeployment, resolveMattermostBot, type Machine, type Probe } from '../src/deployment.ts'
+import { Config, executable, machineOf, resolveAgentmail, resolveDeployment, resolveMattermostBot, resolveTelegram, type Machine, type Probe } from '../src/deployment.ts'
 import { gitEnv } from './fixtures/git.ts'
 
 const exec = promisify(execFile)
@@ -99,6 +99,21 @@ describe('setup', () => {
     await refuses('mattermostUnauthorized', {}, 401, '{"message":"token is invalid"}')
     await refuses('mattermostUnreachable', { url: 'https://mattermost.test', output: 'HTTP 503' }, 503, 'boom')
     await refuses('mattermostNoBot', {}, 200, '{"message":"no user"}')
+  })
+  it('reads the Telegram bot after checking the token, or finds none when the Source names none', async () => {
+    expect(await resolveTelegram(machine(), {})).toBeUndefined()
+    const respond = (status: number, body: object | string): typeof fetch => async (url, init) => {
+      expect(url).toBe(`https://api.telegram.org/bot${'t' + 'est-token'}/getMe`)
+      expect(init?.headers).toBeUndefined()
+      return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+    }
+    const bot = await resolveTelegram(machine(), { botToken: 'test-token' }, respond(200, { ok: true, result: { id: 7, username: 'dsh_bot', is_bot: true } }))
+    expect(bot).toEqual({ token: 'test-token', botId: 7, username: 'dsh_bot' })
+    const refuses = async (code: string, values: Record<string, unknown>, status: number, body: object | string) =>
+      expect(resolveTelegram(machine(), { botToken: 'test-token' }, respond(status, body))).rejects.toEqual(setupError('telegram', code, values))
+    await refuses('telegramUnauthorized', {}, 401, '{"ok":false}')
+    await refuses('telegramUnreachable', { output: 'HTTP 503' }, 503, 'boom')
+    await refuses('telegramNoBot', {}, 200, '{"ok":false}')
   })
   it('reads the AgentMail account after checking the key and the inbox, or finds none when the Source names none', async () => {
     expect(await resolveAgentmail(machine(), {})).toBeUndefined()

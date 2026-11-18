@@ -48,14 +48,16 @@ export const GithubAccountsSchema = z.object({
 })
 export const MattermostBotSchema = z.object({ url: z.string().trim().default(''), token: z.string().trim().default('') })
 export const AgentmailAccountSchema = z.object({ apiKey: z.string().trim().default(''), inboxId: z.string().trim().default('') })
+export const TelegramBotSchema = z.object({ botToken: z.string().trim().default('') })
 /** Source configuration keys that affect deployment setup and trigger a restart when changed. */
-export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { github: Object.keys(GithubAccountsSchema.shape), mattermost: Object.keys(MattermostBotSchema.shape), agentmail: Object.keys(AgentmailAccountSchema.shape) }
+export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { github: Object.keys(GithubAccountsSchema.shape), mattermost: Object.keys(MattermostBotSchema.shape), agentmail: Object.keys(AgentmailAccountSchema.shape), telegram: Object.keys(TelegramBotSchema.shape) }
 
 export interface Deployment extends Machine {
   repository: string
   github: { cli: string; login: string; noreply: string }
   mattermost?: MattermostBot
   agentmail?: AgentmailAccount
+  telegram?: TelegramBot
 }
 /** A verified Mattermost bot: the server it talks to, and the account the bot posts as. */
 export interface MattermostBot { url: string; token: string; botId: string; username: string }
@@ -67,6 +69,10 @@ export interface AgentmailAccount { apiKey: string; inboxId: string }
 export const agentmailPublic = (account: AgentmailAccount): Omit<AgentmailAccount, 'apiKey'> => ({ inboxId: account.inboxId })
 /** The AgentMail API every Source request goes to. */
 export const AGENTMAIL_BASE = 'https://api.agentmail.to/v0'
+/** A verified Telegram bot: the token it answers with, and the account the bot posts as. */
+export interface TelegramBot { token: string; botId: number; username: string }
+/** The part of a Telegram bot the panel may show: never the token. */
+export const telegramPublic = (bot: TelegramBot): Omit<TelegramBot, 'token'> => ({ botId: bot.botId, username: bot.username })
 
 /** Resolve a command name or absolute path to an executable file, ignoring the worker shim directory. */
 export function executable(name: string, path: string, exclude?: string): string {
@@ -135,6 +141,21 @@ export async function resolveMattermostBot(machine: Machine, mattermost: unknown
  * Verifies the AgentMail key against the account and that the named inbox exists, returning the account the Source reads with.
  * The key is stored in the Source configuration and used only by the AgentMail Source's own requests.
  */
+/**
+ * Verifies the Telegram bot token against the Bot API and returns the bot it belongs to.
+ * The token is stored in the Source configuration and used only by the Telegram Source's own requests.
+ */
+export async function resolveTelegram(machine: Machine, telegram: unknown, fetcher: typeof fetch = fetch): Promise<TelegramBot | undefined> {
+  const { botToken } = TelegramBotSchema.parse(telegram ?? {})
+  if (!botToken) return undefined
+  const fail = (error: unknown): never => { throw error instanceof SetupError ? error : new SetupError('telegramUnreachable', { output: reason(error) }) }
+  const response = await fetcher(`https://api.telegram.org/bot${botToken}/getMe`, { signal: AbortSignal.timeout(15_000) }).catch(fail)
+  if (response.status === 401 || response.status === 403) throw new SetupError('telegramUnauthorized')
+  if (!response.ok) fail(new Error(`HTTP ${response.status}`))
+  const bot = z.object({ ok: z.boolean(), result: z.object({ id: z.number(), username: z.string(), is_bot: z.boolean().optional() }) }).safeParse(await response.json())
+  if (!bot.success || !bot.data.ok) throw new SetupError('telegramNoBot')
+  return { token: botToken, botId: bot.data.result.id, username: bot.data.result.username }
+}
 export async function resolveAgentmail(machine: Machine, agentmail: unknown, fetcher: typeof fetch = fetch): Promise<AgentmailAccount | undefined> {
   const { apiKey, inboxId } = AgentmailAccountSchema.parse(agentmail ?? {})
   if (!apiKey || !inboxId) return undefined

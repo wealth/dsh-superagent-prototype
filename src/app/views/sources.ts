@@ -27,8 +27,9 @@ export interface SetupState {
   /** Mattermost bot check failure that pauses only the Mattermost Source. */
   mattermostProblem?: SetupProblem | undefined
   agentmailProblem?: SetupProblem | undefined
+  telegramProblem?: SetupProblem | undefined
 }
-export const problemOf = (id: string, setup: SetupState) => [setup.problem, setup.mattermostProblem, setup.agentmailProblem].find(problem => problem?.place === id)
+export const problemOf = (id: string, setup: SetupState) => [setup.problem, setup.mattermostProblem, setup.agentmailProblem, setup.telegramProblem].find(problem => problem?.place === id)
 /** Source lifecycle state in priority order: missing kind, disabled, setup/part error, blocked on global setup, starting, paused, or ready. */
 export type SourceState = 'missing' | 'off' | 'error' | 'setup' | 'starting' | 'paused' | 'ready'
 function sourceState(instance: SourceInstance & { installed: boolean }, parts: { state: string }[], setup: SetupState): SourceState {

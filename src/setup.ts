@@ -1,7 +1,7 @@
 /** Structured startup and configuration errors with the settings location where the operator can fix them. */
 import { fill } from './infra/text.ts'
 
-export type SetupPlace = 'deployment' | 'github' | 'mattermost' | 'agentmail'
+export type SetupPlace = 'deployment' | 'github' | 'mattermost' | 'agentmail' | 'telegram'
 export const SETUP_PROBLEMS = {
   foreignFile: ['deployment', '{file} was not written by dsh-superagent; move it, or choose another state directory.'],
   gitTooOld: ['deployment', 'git does not read the github.com credential configuration dsh-superagent writes; dsh-superagent needs git 2.32 or later.'],
@@ -23,6 +23,10 @@ export const SETUP_PROBLEMS = {
   agentmailUnreachable: ['agentmail', 'AgentMail did not answer: {output}'],
   agentmailUnauthorized: ['agentmail', 'The AgentMail API key was rejected.'],
   agentmailInboxMissing: ['agentmail', 'The inbox {inbox} does not exist under this AgentMail account.'],
+  telegramUnset: ['telegram', 'The Telegram Source names no bot token.'],
+  telegramUnreachable: ['telegram', 'Telegram did not answer: {output}'],
+  telegramUnauthorized: ['telegram', 'The Telegram bot token was rejected.'],
+  telegramNoBot: ['telegram', 'Telegram did not report the bot account.'],
 } as const satisfies Record<string, readonly [SetupPlace, string]>
 export type SetupCode = keyof typeof SETUP_PROBLEMS
 export interface SetupProblem { place: SetupPlace; code: SetupCode; values: Record<string, string>; detail: string }

@@ -377,6 +377,11 @@ Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsub
 | `src/sources/agentmail-loops.ts` | Цикл AgentMail: опрос обновлённых тредов ящика и курсоры последних писем |
 | `src/sources/agentmail-channel.ts` | Канал AgentMail: ответ в тред письма с `Idempotency-Key`, `sent` или `gone` |
 | `src/sources/agentmail-read.ts` | Чтения треда письма постранично и `agentmailThreadContext`, который даёт их оценкам |
+| `src/sources/telegram.ts` | Вид Telegram и точка входа плагина, экспортируемая как `./telegram-watch` |
+| `src/sources/telegram-trigger.ts` | Сообщения боту как Триггеры: чат, отправитель, детерминированный ID |
+| `src/sources/telegram-loops.ts` | Цикл Telegram: длинный опрос getUpdates и смещение обновлений |
+| `src/sources/telegram-channel.ts` | Канал Telegram: ответы в чат через sendMessage, `sent` или `gone` |
+| `src/sources/telegram-read.ts` | `telegramThreadContext`: контекст чата, который бот сам видел |
 | `src/sources/admission-context.ts` | Ограниченное окно, из которого начинается оценка: первые страницы Треда Триггера, читаемые через его вид, и сообщения вокруг Триггера |
 | `src/client/index.tsx` | Точка входа клиентского плагина: запись в боковой панели, основная панель и страница в Plugin Manager DeepSeek Harness |
 | `src/client/app.tsx` | Панель: шапка, поиск, глоссарий, вкладки и страница текущего маршрута |
@@ -401,7 +406,7 @@ Runtime превращает `ticket.ended`, `trigger.requeued` и `thread.unsub
 | `src/client/locales.ts` | Весь текст на обоих языках и глоссарий [001 Domain model](001-domain.md) |
 | `src/client/client.css`, `css.d.ts` | Таблица стилей панели, загружаемая как текст |
 
-`src/sources/github.ts`, `src/sources/mattermost.ts` и `src/sources/agentmail.ts` также являются точками входа трёх плагинов Источников, собираемыми через `tsdown.config.ts` и экспортируемыми в `package.json` как `./github-watch`, `./mattermost-watch` и `./agentmail-watch`. `cordis.patch.yml` бандла вставляет четыре плагина, с Mattermost и AgentMail отключёнными.
+`src/sources/github.ts`, `src/sources/mattermost.ts`, `src/sources/agentmail.ts` и `src/sources/telegram.ts` также являются точками входа четырёх плагинов Источников, собираемыми через `tsdown.config.ts` и экспортируемыми в `package.json` как `./github-watch`, `./mattermost-watch`, `./agentmail-watch` и `./telegram-watch`. `cordis.patch.yml` бандла вставляет пять плагинов, с Mattermost, AgentMail и Telegram отключёнными.
 
 ## Tests
 

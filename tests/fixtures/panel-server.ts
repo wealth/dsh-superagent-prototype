@@ -19,6 +19,7 @@ import { mattermostChannel } from '../../src/sources/mattermost.ts'
 import { githubChannel } from '../../src/sources/github-trigger.ts'
 import { mattermostKind } from '../../src/sources/mattermost.ts'
 import { agentmailKind } from '../../src/sources/agentmail.ts'
+import { telegramKind } from '../../src/sources/telegram.ts'
 import { githubKind } from '../../src/sources/github.ts'
 import type { Health } from '../../src/sources/host.ts'
 import type { SourceKind } from '../../src/sources/kind.ts'
@@ -80,7 +81,7 @@ export const droppedReply = (id: string, hoursAgo: number, source: 'mattermost' 
 const dayAgo = () => new Date(Date.now() - 86_400_000).toISOString()
 export const problemOf = (code: SetupCode, values: Record<string, string> = {}) => new SetupError(code, values).problem
 // The kinds' configurations differ, and the fake reads them only as the records the views carry.
-const KINDS = [mattermostKind, githubKind, agentmailKind] as unknown as SourceKind[]
+const KINDS = [mattermostKind, githubKind, agentmailKind, telegramKind] as unknown as SourceKind[]
 export const MACHINE = { stateDir: '/srv/dsh-superagent', promptMaxChars: 100000, admissionContextMaxPages: 10,
   admissionContextTimeoutMs: 15000 }
 
@@ -250,9 +251,9 @@ function initial(): PanelServer {
   const defaults = { revision: 0, previousRevision: null, savedAt: '', source: 'defaults' }
   return {
     health: {}, down: false, pending: 0, opened: [], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
-    setup: { machine: MACHINE, problem: null, mattermostProblem: null, agentmailProblem: null,
+    setup: { machine: MACHINE, problem: null, mattermostProblem: null, agentmailProblem: null, telegramProblem: null,
       accounts: { repository: 'acme/widgets', agent: 'agent-bot', mattermost: { url: 'https://mattermost.test', botId: 'botuser0000000000000000001',
-        username: 'dsh-bot' }, agentmail: { inboxId: 'agent@agentmail.test' } } },
+        username: 'dsh-bot' }, agentmail: { inboxId: 'agent@agentmail.test' }, telegram: { botId: 7, username: 'dsh_bot' } } },
     settings, revisions: { policy: 3, eval: 1, executor: 0 },
     prompts: { masterId: 'master', sections: TEAM_SECTIONS, skillName: SKILL_NAME.source, builtin: ['mattermost', 'github'],
       skillPrefix: SKILL_PREFIX, revision: 0, current: { ...defaults, config: defaultPrompts() },
