@@ -18,7 +18,7 @@ declare const MessageSchema: z.ZodObject<{
   subject: z.ZodOptional<z.ZodNullable<z.ZodString>>;
   in_reply_to: z.ZodOptional<z.ZodNullable<z.ZodString>>;
   labels: z.ZodDefault<z.ZodArray<z.ZodString>>;
-  authentication_results: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+  authentication_results: z.ZodOptional<z.ZodUnknown>;
 }, z.core.$loose>;
 type AgentmailMessage = z.infer<typeof MessageSchema>;
 /** Strips the display name from `Display Name <user@domain>` down to the bare address. */

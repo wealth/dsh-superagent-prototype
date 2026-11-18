@@ -160,13 +160,13 @@ describe('agentmail source', () => {
       await vi.advanceTimersByTimeAsync(1000)
       const at = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOString()
       messages.push(message({ message_id: 'm1', thread_id: 't1', timestamp: at(2),
-        authentication_results: 'spf=fail smtp.mailfrom=bob@example.test; dkim=none; dmarc=fail' }))
+        authentication_results: [{ type: 'dmarc', result: 'permerror' }] }))
       threads.push({ thread_id: 't1', timestamp: at(2), last_message_id: 'm1', message_count: 1 })
       await vi.advanceTimersByTimeAsync(61_000)
       expect(h.receive).not.toHaveBeenCalled() // failed mail is skipped
       expect(h.health.agentmail).toMatchObject({ state: 'ready', detail: expect.stringContaining('1 unauthenticated messages skipped') })
       const passed = message({ message_id: 'm2', thread_id: 't2', timestamp: at(62),
-        authentication_results: 'spf=pass smtp.mailfrom=bob@example.test; dkim=pass; dmarc=pass' })
+        authentication_results: [{ type: 'spf', result: 'pass' }, { type: 'dkim', result: 'pass' }, { type: 'dmarc', result: 'pass' }] })
       messages.push(passed)
       threads.push({ thread_id: 't2', timestamp: at(62), last_message_id: 'm2', message_count: 1 })
       await vi.advanceTimersByTimeAsync(61_000)

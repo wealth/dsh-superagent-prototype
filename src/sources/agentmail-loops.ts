@@ -64,7 +64,13 @@ function listened(config: AgentmailConfig, message: AgentmailMessage): boolean {
  */
 function authenticated(message: AgentmailMessage): boolean {
   const results = message.authentication_results
-  return results === undefined || results === null || /(?:spf|dkim|dmarc)[^;\n]*\bpass\b/i.test(results)
+  if (results === undefined || results === null) return true
+  const blob = typeof results === 'string' ? results : JSON.stringify(results)
+  // Fail only on positive failure evidence: AgentMail withholds unauthenticated mail from list endpoints, so a
+  // message without readable results defaults to trusted. The identity the allowlist trusts is the domain, so a
+  // failed DMARC is what disqualifies; spf/dkim pass-fails alone do not.
+  return !/dmarc[^;\n]{0,80}\b(?:fail|softfail|permerror)\b/i.test(blob)
+    && !/unauthenticated[^;\n]{0,80}\btrue\b/i.test(blob)
 }
 
 /** Returns an error health once `failures` consecutive polls fail, or undefined so a single network interruption stays quiet. */
