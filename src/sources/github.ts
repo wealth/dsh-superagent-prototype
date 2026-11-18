@@ -5,7 +5,7 @@ import { sameName } from '../infra/text.ts'
 import { GithubAccountsSchema } from '../deployment.ts'
 import { CliError, validItems, type Tally } from '../infra/commands.ts'
 import { ciCounts, ciFact, ciFailures, ciSummary, githubThreadContext, pullChecks } from './github-read.ts'
-import { branchCiTrigger, ciTrigger, commentTrigger, CommentSchema, githubAddress, issueTrigger, IssueSchema, pullTrigger, SOURCE }
+import { branchCiTrigger, ciTrigger, commentTrigger, CommentSchema, deployTrigger, githubAddress, issueTrigger, IssueSchema, pullTrigger, SOURCE }
   from './github-trigger.ts'
 import { githubLink, sendGithub } from './github-channel.ts'
 import type { GithubComment, PullRef } from './github-trigger.ts'
@@ -25,7 +25,10 @@ const NotificationSchema = z.looseObject({
 const GithubConfigSchema = GithubAccountsSchema.extend({ pollSeconds: z.number().int().min(60).max(3600).default(60),
   failuresBeforeError: z.number().int().min(1).max(20).default(3),
   observeIssues: z.boolean().default(false), observePulls: z.boolean().default(false), observeComments: z.boolean().default(false),
-  observeCi: z.boolean().default(false) }).strict()
+  observeCi: z.boolean().default(false),
+  deployChecks: z.array(z.object({ name: z.string().trim().min(1).max(200) }).strict())
+    .refine(entries => new Set(entries.map(entry => entry.name)).size === entries.length, 'Duplicate check names').default([]),
+}).strict()
 export type GithubConfig = z.infer<typeof GithubConfigSchema>
 const OBSERVED = { issues: 'observeIssues', pulls: 'observePulls', comments: 'observeComments', ci: 'observeCi' } as const
 type Scope = keyof typeof OBSERVED
@@ -55,9 +58,15 @@ export const githubKind: SourceKind<GithubConfig> = {
     { key: 'observeComments', type: 'switch', label: { zh: '接收仓库里的评论', en: 'Receive comments in the repository', ru: 'Принимать комментарии в репозитории' },
       hint: { zh: '打开后，Issue 和 PR 上没有 @ 智能体的评论和代码评论也会收到，由策略的接收表决定是否成为候选。', en: 'Comments and review comments on Issues and PRs that do not mention the agent are received too, and the Policy\'s admission table decides whether they become candidates.', ru: 'Если включено, принимаются также комментарии к Issue и PR и комментарии к коду без упоминания агента; решает таблица приёма политики, станут ли они кандидатами.' } },
     { key: 'observeCi', type: 'switch', label: { zh: '接收默认分支的 CI', en: 'Receive the default branch\'s CI', ru: 'Принимать CI основной ветки' },
-      hint: { zh: '打开后，默认分支的 CI 失败和恢复会收到，由策略的接收表决定是否成为候选。', en: 'Failures of the default branch\'s CI, and its recovery, are received, and the Policy\'s admission table decides whether they become candidates.', ru: 'Если включено, принимаются сбои и восстановления CI основной ветки; решает таблица приёма политики, станут ли они кандидатами.' } }],
+      hint: { zh: '打开后，默认分支的 CI 失败和恢复会收到，由策略的接收表决定是否成为候选。', en: 'Failures of the default branch\'s CI, and its recovery, are received, and the Policy\'s admission table decides whether they become candidates.', ru: 'Если включено, принимаются сбои и восстановления CI основной ветки; решает таблица приёма политики, станут ли они кандидатами.' } },
+    { key: 'deployChecks', type: 'rows', label: { zh: '部署检查', en: 'Deploy checks', ru: 'Деплой-проверки' },
+      hint: { zh: '这些 GitHub 检查/工作流在 PR 合并后监控其 merge commit：检查结论成为部署触发器，由评估者把结果邮件发送给报告人。留空则禁用该功能。',
+        en: 'These GitHub checks or workflows are watched on a ticket PR\'s merge commit once it merges: a check\'s conclusion becomes a deploy Trigger, and the assessor emails the reporter the result. Leave empty to disable.',
+        ru: 'Эти проверки или воркфлоу GitHub следятся на merge-коммите PR тикета после его мержа: их завершение становится деплой-триггером, а оценщик отправляет репортеру письмо с итогом. Пусто — выключено.' },
+      columns: [{ key: 'name', type: 'text', label: { zh: '检查名', en: 'Check name', ru: 'Имя проверки' } }] }],
   // What the Source observes across the repository it receives in full; elsewhere, only what addresses the agent.
   scope: ({ meta }, config) => {
+    if (meta.kind === 'deploy') return { listened: true, observed: config.deployChecks.length > 0, row: 'deploy' }
     const row = scopeOf(meta)
     return { listened: true, observed: row !== undefined && config[OBSERVED[row]], ...row ? { row } : {} }
   },
@@ -87,7 +96,9 @@ export const githubKind: SourceKind<GithubConfig> = {
         row('comments', { zh: '评论', en: 'Comments', ru: 'Комментарии' }),
         // CI has no sender, so only the cell of a sender off the list who does not address the agent applies.
         { id: 'ci', label: { zh: '默认分支的 CI', en: 'Default branch CI', ru: 'CI основной ветки' }, note: config.observeCi ? { zh: '接收', en: 'Received', ru: 'Принимать' } : { zh: '不接收', en: 'Not received', ru: 'Не принимать' },
-          cells: { listedUnaddressed: false, unlistedAddressed: false, unlistedUnaddressed: !!config.observeCi } }]
+          cells: { listedUnaddressed: false, unlistedAddressed: false, unlistedUnaddressed: !!config.observeCi } },
+        { id: 'deploy', label: { zh: 'PR 合并后的部署结论', en: 'Deploy conclusions after a PR merge', ru: 'Итоги деплоя после мержа PR' }, note: config.deployChecks?.length ? { zh: '接收', en: 'Received', ru: 'Принимать' } : { zh: '不接收', en: 'Not received', ru: 'Не принимать' },
+          cells: { listedUnaddressed: false, unlistedAddressed: false, unlistedUnaddressed: !!config.deployChecks?.length } }]
     },
   },
   environment: {
@@ -280,10 +291,12 @@ async function pollBranchCi(ctx: SourceContext, round: Round): Promise<void> {
  */
 export async function pollRound(ctx: SourceContext, signal?: AbortSignal): Promise<number> {
   const round = newRound(signal)
+  const config = ctx.config<GithubConfig>(SOURCE)
   const notified = await pollNotifications(ctx, round).then(value => ({ value }), (error: unknown) => ({ error }))
   await pollRepository(ctx, round)
   await pollTicketPulls(ctx, signal, round)
   await pollThreads(ctx, signal, round)
+  await pollDeploys(ctx, signal, config).catch(error => { if (!signal?.aborted) round.failures.push(`deploy watch: ${String(error)}`) })
   if ('error' in notified) throw notified.error
   const { count, interval } = notified.value
   if (signal?.aborted) return interval
@@ -426,6 +439,46 @@ async function pollChecks(ctx: SourceContext, round: Round, number: number, pr: 
 function nameThread(ctx: SourceContext, number: number, title: string): void {
   ctx.threads.patch(`github:${number}`, { title })
   ctx.threads.describe(`github:${number}`, { label: `#${number} ${title}`, facts: { number: { value: `#${number}` } } })
+}
+/**
+ * Watches the configured deploy checks on every ticket PR that merged within the horizon: a watched check's conclusion
+ * becomes a deploy Trigger on the PR thread, which the assessor turns into the reporter's email. One conclusion per PR is
+ * recorded; later runs stay silent.
+ */
+export async function pollDeploys(ctx: SourceContext, signal?: AbortSignal, config = ctx.config<GithubConfig>(SOURCE)): Promise<void> {
+  if (!config?.deployChecks.length) return
+  const horizon = new Date(Date.now() - POLL_HORIZON_MS).toISOString()
+  const commands = ctx.commands.withSignal(signal)
+  const names = config.deployChecks.map(entry => entry.name.toLowerCase())
+  for (const ticket of ctx.tickets.ended()) {
+    if (signal?.aborted) return
+    if (ticket.ended?.outcome !== 'merged' || ticket.ended.at < horizon) continue
+    for (const number of pullsOf(ticket, true)) {
+      if (signal?.aborted) return
+      const seen = ctx.state.get(KV.github.deployed(number))
+      if (seen) continue
+      const head = z.looseObject({ merge_commit_sha: z.string().nullish() }).parse(await commands.api(`pulls/${number}`))
+      if (!head.merge_commit_sha) continue
+      const page = z.looseObject({ check_runs: z.array(z.unknown()) })
+      const runs = validItems(DeployCheckSchema, page.parse(JSON.parse(body(await commands.api(`commits/${head.merge_commit_sha}/check-runs?per_page=100`, '--paginate', '--slurp')))).check_runs)
+      for (const run of runs) {
+        if (!names.includes(run.name.toLowerCase())) continue
+        if (run.status !== 'completed' || !run.conclusion) break
+        void run.details_url
+        await ctx.receive(deployTrigger(number, ticket.id, run))
+        ctx.atomic(() => { ctx.state.set(KV.github.deployed(number),
+          { check: run.name, runId: run.id, conclusion: run.conclusion!, ticketId: ticket.id, at: new Date().toISOString() }) })
+        break
+      }
+    }
+  }
+}
+/** The Bot API-independent check run fields the deploy watch reads; loose like the CI read. */
+const DeployCheckSchema = z.looseObject({ id: z.number(), name: z.string(), status: z.string(), conclusion: z.string().nullable(), details_url: z.string().nullish() })
+/** Splits a gh `--include` response into headers and JSON body (the notifications reader does the same). */
+function body(raw: string): string {
+  const split = raw.search(/\r?\n\r?\n/)
+  return split < 0 ? raw : raw.slice(split).trim()
 }
 /** Polls subscribed Issue and PR Threads not already read in this round; a deleted (410) Issue is still polled within the horizon (costing one read) and does not fail the round. */
 export async function pollThreads(ctx: SourceContext, signal?: AbortSignal, round = newRound(signal)): Promise<void> {

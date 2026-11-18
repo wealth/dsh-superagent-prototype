@@ -54,5 +54,6 @@ export const KV = {
     cursor: family<string, [number: number]>('github-cursor:'),
     stream: family<{ since: string; started: Record<string, string>; etag?: string }, [stream: string]>('github-stream:'),
     branchCi: record<{ branch?: string; failures?: string[]; revision: number }>('github-branch-ci'),
-    ci: family<{ fingerprint: string; revision: number }, [number: number]>('github-ci:') },
+    ci: family<{ fingerprint: string; revision: number }, [number: number]>('github-ci:'),
+    deployed: family<{ check: string; runId: number; conclusion: string; ticketId: string; at: string }, [number: number]>('github-deployed:') },
  }

@@ -638,6 +638,9 @@ declare const GithubConfigSchema: z.ZodObject<{
   observePulls: z.ZodDefault<z.ZodBoolean>;
   observeComments: z.ZodDefault<z.ZodBoolean>;
   observeCi: z.ZodDefault<z.ZodBoolean>;
+  deployChecks: z.ZodDefault<z.ZodArray<z.ZodObject<{
+    name: z.ZodString;
+  }, z.core.$strict>>>;
 }, z.core.$strict>;
 type GithubConfig = z.infer<typeof GithubConfigSchema>;
 declare const githubKind: SourceKind<GithubConfig>;
@@ -671,6 +674,24 @@ interface Retry {
  */
 declare function pollRound(ctx: SourceContext, signal?: AbortSignal): Promise<number>;
 declare function pollTicketPulls(ctx: SourceContext, signal?: AbortSignal, round?: Round): Promise<void>;
+/**
+ * Watches the configured deploy checks on every ticket PR that merged within the horizon: a watched check's conclusion
+ * becomes a deploy Trigger on the PR thread, which the assessor turns into the reporter's email. One conclusion per PR is
+ * recorded; later runs stay silent.
+ */
+declare function pollDeploys(ctx: SourceContext, signal?: AbortSignal, config?: {
+  repository: string;
+  cli: string;
+  pollSeconds: number;
+  failuresBeforeError: number;
+  observeIssues: boolean;
+  observePulls: boolean;
+  observeComments: boolean;
+  observeCi: boolean;
+  deployChecks: {
+    name: string;
+  }[];
+} | undefined): Promise<void>;
 /** Polls subscribed Issue and PR Threads not already read in this round; a deleted (410) Issue is still polled within the horizon (costing one read) and does not fail the round. */
 declare function pollThreads(ctx: SourceContext, signal?: AbortSignal, round?: Round): Promise<void>;
 //#endregion
@@ -748,6 +769,8 @@ interface SourceContext {
     get(id: string): Ticket | undefined;
     /** Open tickets, newest first. */
     open(): Ticket[];
+    /** Ended tickets, newest first, within the Sources' own reading horizon. */
+    ended(): Ticket[];
     /** Binds an open ticket to follow a Source Thread (`own` when opened by the ticket) so the Thread's close, not a ready report, ends the ticket. */
     bindThread(id: string, thread: ThreadRef, own: boolean): void;
     /** Reports that a followed Thread closed at `at`; each open ticket following it ends once no `own` Thread remains open and no resumed work is still running. */
@@ -975,4 +998,4 @@ interface SourceInstance<C extends Record<string, unknown> = Record<string, unkn
   config: C;
 }
 //#endregion
-export { GithubComment as _, ThreadContext as a, Retry as c, inject as d, name as f, pollTicketPulls as g, pollThreads as h, SourceKind as i, apply as l, pollRound as m, ChannelLinks as n, SourceContext as o, pollFailure as p, ContextMessage as r, GithubConfig as s, ChannelLink as t, githubKind as u, commentTrigger as v, SourceRegistry as y };
+export { pollTicketPulls as _, ThreadContext as a, SourceRegistry as b, Retry as c, inject as d, name as f, pollThreads as g, pollRound as h, SourceKind as i, apply as l, pollFailure as m, ChannelLinks as n, SourceContext as o, pollDeploys as p, ContextMessage as r, GithubConfig as s, ChannelLink as t, githubKind as u, GithubComment as v, commentTrigger as y };

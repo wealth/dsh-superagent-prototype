@@ -7,6 +7,20 @@ export const SOURCE = 'github'
 /** GitHub reply address: issue/PR conversation, or a review thread when `url` points at a discussion comment. */
 export const githubChannel = (number: number, url?: string): ChannelRef =>
   ({ source: SOURCE, thread: `github:${number}`, address: { number: String(number), ...(url ? { url } : {}) } })
+/** Deterministic content-hash Trigger ID for a deploy check conclusion of one PR. */
+export const deployTriggerId = (number: number, check: string, conclusion: string): string => key('deploy', String(number), check, conclusion)
+
+/**
+ * A deploy check's conclusion for a merged ticket's PR: no channel (the assessor emails the reporter through the
+ * ticket's own conversation), no addressed flag, and a bot actor whose message never authorizes work by itself.
+ */
+export function deployTrigger(number: number, ticketId: string, check: { name: string; conclusion?: string | null; details_url?: string | null }): Trigger {
+  const conclusion = check.conclusion ?? 'pending'
+  return { id: deployTriggerId(number, check.name, conclusion), source: SOURCE,
+    threads: [{ source: SOURCE, id: String(number) }], actor: { source: SOURCE, id: 'deploy' }, human: false,
+    at: new Date().toISOString(), text: `Deploy check «${check.name}» concluded ${conclusion} for PR #${number}; the ticket's reporter awaits the email.`,
+    meta: { kind: 'deploy', number, ticketId, check: check.name, conclusion, ...check.details_url ? { url: check.details_url } : {} } }
+}
 export const githubPage = (repository: string, number: number, pr = false): string =>
   `https://github.com/${repository}/${pr ? 'pull' : 'issues'}/${number}`
 /** Parses a web or API URL for an Issue, PR, or review comment in `repository`; returns undefined for other URLs or repositories. */

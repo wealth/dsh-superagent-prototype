@@ -199,7 +199,7 @@ Check dsh-superagent: run `scripts/dsh-superagent --profile superagent status` i
 | `evals` | Недоступные Оценки за последний час без последующего решения или отклонения |
 | `assessment`, `launch`, `delivery`, `relay`, `notice`, `reply` | Сохранённая работа, описанная в [003 Execution](003-execution.md); delivery считает ожидающую работу, а reply охватывает сообщения Канала |
 | `worker` | Обработка событий Сессии Исполнителя; появляется после её первой неудачи |
-| `github`, `feishu`, `agentmail`, `history` | Опрос Источников, события и восстановление истории |
+| `github`, `feishu`, `agentmail`, `telegram`, `history` | Опрос Источников, события и восстановление истории |
 | `sync:<source id>` | Синхронизация списка разрешённых |
 
 Отказ имеет статус и `error`, его текст на английском:
@@ -211,7 +211,7 @@ Check dsh-superagent: run `scripts/dsh-superagent --profile superagent status` i
 
 Блоки:
 
-- `source:github`, `source:feishu`, `source:agentmail`: `{"enabled": true, "config": {…}}`; у AgentMail это `apiKey` и `inboxId` — адрес ящика. Конфигурация GitHub имеет `repository` и `cli` и переключатели `observeIssues`, `observePulls`, `observeComments` и `observeCi`, выключенные по умолчанию, которые принимают каждую новую Issue, новый pull request и комментарий в репозитории и CI основной ветки; у Feishu есть `cli`, `chats` как `[{"chatId": "oc_…", "name": "…", "listen": "mentions"}]` (или `"all"`), `directMessages` и `otherChats` как `"none"` или `"mentions"`.
+- `source:github`, `source:feishu`, `source:agentmail`, `source:telegram`: `{"enabled": true, "config": {…}}`; у AgentMail это `apiKey` и `inboxId` — адрес ящика, у Telegram — `botToken` и необязательный вайтлист `senders`; `deployChecks` GitHub-источника перечисляет деплой-проверки, чей итог после мержа PR тикета становится кандидатом для письма репортеру. Конфигурация GitHub имеет `repository` и `cli` и переключатели `observeIssues`, `observePulls`, `observeComments` и `observeCi`, выключенные по умолчанию, которые принимают каждую новую Issue, новый pull request и комментарий в репозитории и CI основной ветки; у Feishu есть `cli`, `chats` как `[{"chatId": "oc_…", "name": "…", "listen": "mentions"}]` (или `"all"`), `directMessages` и `otherChats` как `"none"` или `"mentions"`.
 - `policy`: `{"rules": […], "sources": {"github": {"allowed": [{"id": "<login>"}], "bots": [{"id": "dependabot[bot]"}]}, "feishu": {"allowed": [{"id": "ou_…", "name": "…"}], "syncChat": "oc_…", "admission": {"oc_…": {"unlistedAddressed": "explicit"}}}}}`. `bots` перечисляет ботов, чьи сообщения могут стать предполагаемыми кандидатами. Строка `admission` имеет ключ по id чата, `other` или `direct` для Feishu, и по `issues`, `pulls`, `comments` или `ci` для GitHub; незаполненная ячейка принимает значение по умолчанию (см. [002 Authorization](002-authorization.md)).
 - `eval`: `mode`, `timeoutSeconds` и `model`.
 - `executor`: `model`, `maxWorkers`, `directory`, `prepare`, `blockedCommands` и `prNotices` — переключатель уведомлений о готовности и мерже PR тикета в чате источника (выключенные остаются только ответы на вопросы и сообщения, требующие человека). Пауза обработки — это отдельная настройка, `paused`, которую устанавливает `POST executor/pause`.

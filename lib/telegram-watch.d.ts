@@ -1,5 +1,5 @@
 import { S as ChannelRef, U as Trigger, gt as resolveTelegram, l as OutboundMessage, pt as TelegramBot } from "./intake-DmDrwTW_.js";
-import { a as ThreadContext, i as SourceKind, n as ChannelLinks, o as SourceContext, t as ChannelLink } from "./kind-Cp_d4Wsz.js";
+import { a as ThreadContext, i as SourceKind, n as ChannelLinks, o as SourceContext, t as ChannelLink } from "./kind-CSGDxCtm.js";
 import { Context } from "@deepseek-ai/cordis";
 import { z } from "zod";
 //#region src/sources/telegram-trigger.d.ts

@@ -183,7 +183,7 @@ it('lists each Source\'s bots next to its people and saves them, and sets the Gi
   // Until the GitHub Source receives the repository's Issues, pull requests, comments or CI, only messages that mention the agent arrive.
   const rows = () => all('.dt-admission tbody tr').map(row => [row.querySelector('.dt-admission-scope')!.firstChild?.textContent,
     row.querySelector('.dt-admission-scope small')?.textContent, row.querySelectorAll('select').length])
-  expect(rows()).toEqual([['新 Issue', '仅 @', 1], ['新 PR', '仅 @', 1], ['评论', '仅 @', 1], ['默认分支的 CI', '不接收', 0]])
+  expect(rows()).toEqual([['新 Issue', '仅 @', 1], ['新 PR', '仅 @', 1], ['评论', '仅 @', 1], ['默认分支的 CI', '不接收', 0], ['PR 合并后的部署结论', '不接收', 0]])
   expect(field<HTMLSelectElement>('新 Issue · 名单外 · 点名智能体').value).toBe('ignore')
   await click(zh.save)
   expect(server.settings.policy.sources.mattermost!.bots).toEqual([{ id: 'cli_reviewer', name: '评审机器人' }])
@@ -207,7 +207,7 @@ it('shows the GitHub Source\'s switches for what it receives across the reposito
   await click(find(en['source.github'], '.dt-subtab'))
   const rows = all('.dt-admission tbody tr').map(row => [row.querySelector('.dt-admission-scope')!.firstChild?.textContent,
     row.querySelectorAll('select').length])
-  expect(rows).toEqual([['New Issues', 3], ['New pull requests', 1], ['Comments', 3], ['Default branch CI', 1]])
+  expect(rows).toEqual([['New Issues', 3], ['New pull requests', 1], ['Comments', 3], ['Default branch CI', 1], ['Deploy conclusions after a PR merge', 0]])
   // CI has no sender: its one cell is that of a message off the list that does not mention the agent.
   expect(field('Default branch CI · Not on the list · no mention')).toBeTruthy()
   expect(all('.dt-admission thead th').map(cell => cell.textContent)).toContain(en.admissionAddressed)

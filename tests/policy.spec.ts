@@ -482,7 +482,8 @@ describe('bots and events without a sender', () => {
       ['issues', { listedUnaddressed: true, unlistedAddressed: true, unlistedUnaddressed: true }],
       ['pulls', { listedUnaddressed: false, unlistedAddressed: true, unlistedUnaddressed: false }],
       ['comments', { listedUnaddressed: false, unlistedAddressed: true, unlistedUnaddressed: false }],
-      ['ci', { listedUnaddressed: false, unlistedAddressed: false, unlistedUnaddressed: false }]])
+      ['ci', { listedUnaddressed: false, unlistedAddressed: false, unlistedUnaddressed: false }],
+      ['deploy', { listedUnaddressed: false, unlistedAddressed: false, unlistedUnaddressed: false }]])
   })
 })
 
