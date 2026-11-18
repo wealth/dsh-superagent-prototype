@@ -57,6 +57,15 @@ async function pollLoop(ctx: SourceContext, signal: AbortSignal): Promise<void> 
 function listened(config: AgentmailConfig, message: AgentmailMessage): boolean {
   return !config.senders.length || config.senders.some(sender => sender.address.toLowerCase() === addressOf(message.from).toLowerCase())
 }
+/**
+ * True when the mail's SPF/DKIM/DMARC results, when the API carries them, show a pass: a listed address is not proof of
+ * the sender, so failed mail is skipped instead of becoming Triggers. AgentMail also withholds such mail from every list
+ * endpoint, so this check is a belt-and-braces guard for whatever still surfaces here.
+ */
+function authenticated(message: AgentmailMessage): boolean {
+  const results = message.authentication_results
+  return results === undefined || results === null || /(?:spf|dkim|dmarc)[^;\n]*\bpass\b/i.test(results)
+}
 
 /** Returns an error health once `failures` consecutive polls fail, or undefined so a single network interruption stays quiet. */
 export function pollFailure(failures: number, threshold: number, error: unknown): Health | undefined {
@@ -80,7 +89,10 @@ async function pollRound(ctx: SourceContext, signal: AbortSignal, config: Agentm
     if (signal.aborted) return config.pollSeconds
   }
   ctx.atomic(() => { ctx.state.set(KV.agentmail.since, cursorAt(started)) })
-  ctx.report(SOURCE, { state: 'ready', detail: `${list.threads.length} updated threads; next poll ≥ ${config.pollSeconds}s`, at: started })
+  const skipped = ctx.state.get(KV.agentmail.unauthenticated)
+  const detail = `${list.threads.length} updated threads; next poll ≥ ${config.pollSeconds}s`
+    + (skipped ? `; ${skipped.count} unauthenticated messages skipped since ${skipped.at}` : '')
+  ctx.report(SOURCE, { state: 'ready', detail, at: started })
   return config.pollSeconds
 }
 
@@ -95,9 +107,14 @@ async function readThread(ctx: SourceContext, inbox: AgentmailAccount, item: z.i
   const fresh = page.messages.filter(message => Date.parse(message.timestamp) >
     (known ? Date.parse(known.lastAt) : Date.parse(since) - 5000))
     .filter(message => listened(config, message))
-  for (const message of fresh) {
+  for (const message of fresh.filter(authenticated)) {
     if (signal.aborted) return
     await receive(ctx, agentmailTrigger(message, inbox.inboxId), item)
+  }
+  const rejected = fresh.length - fresh.filter(authenticated).length
+  if (rejected) {
+    const skipped = ctx.state.get(KV.agentmail.unauthenticated)
+    ctx.state.set(KV.agentmail.unauthenticated, { count: (skipped?.count ?? 0) + rejected, at: skipped?.at ?? new Date().toISOString() })
   }
   ctx.state.set(KV.agentmail.thread(item.thread_id), { lastMessageId: item.last_message_id, lastAt: item.timestamp })
 }

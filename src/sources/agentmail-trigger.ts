@@ -13,6 +13,7 @@ export const MessageSchema = z.looseObject({
   message_id: z.string(), thread_id: z.string(), from: z.string(), to: z.array(z.string()).default([]),
   timestamp: z.string(), text: z.string().nullish(), extracted_text: z.string().nullish(), subject: z.string().nullish(),
   in_reply_to: z.string().nullish(), labels: z.array(z.string()).default([]),
+  authentication_results: z.string().nullish(),
 })
 export type AgentmailMessage = z.infer<typeof MessageSchema>
 

@@ -142,6 +142,40 @@ describe('agentmail source', () => {
     expect(() => agentmailKind.schema.parse({ apiKey: 'k', inboxId: INBOX, senders: [{ address: 'not-an-email' }] })).toThrow()
   })
 
+  it('skips mail whose authentication results show no pass, and names the skips in health', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const threads: { thread_id: string; timestamp: string; last_message_id: string; message_count: number; subject?: string }[] = []
+      const messages: AgentmailMessage[] = []
+      const h = host({}, url => {
+        if (url.pathname === `/v0/inboxes/${INBOX}/threads`) return Response.json({ threads })
+        if (url.pathname.startsWith('/v0/threads/')) {
+          const id = decodeURIComponent(url.pathname.slice('/v0/threads/'.length))
+          return Response.json({ thread_id: id, messages: messages.filter(item => item.thread_id === id) })
+        }
+        return undefined
+      })
+      const disposers: (() => unknown)[] = []
+      applyAgentmail({ orchestrator: h, effect: (effect: () => () => unknown) => { disposers.push(effect()) } } as never)
+      await vi.advanceTimersByTimeAsync(1000)
+      const at = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOString()
+      messages.push(message({ message_id: 'm1', thread_id: 't1', timestamp: at(2),
+        authentication_results: 'spf=fail smtp.mailfrom=bob@example.test; dkim=none; dmarc=fail' }))
+      threads.push({ thread_id: 't1', timestamp: at(2), last_message_id: 'm1', message_count: 1 })
+      await vi.advanceTimersByTimeAsync(61_000)
+      expect(h.receive).not.toHaveBeenCalled() // failed mail is skipped
+      expect(h.health.agentmail).toMatchObject({ state: 'ready', detail: expect.stringContaining('1 unauthenticated messages skipped') })
+      const passed = message({ message_id: 'm2', thread_id: 't2', timestamp: at(62),
+        authentication_results: 'spf=pass smtp.mailfrom=bob@example.test; dkim=pass; dmarc=pass' })
+      messages.push(passed)
+      threads.push({ thread_id: 't2', timestamp: at(62), last_message_id: 'm2', message_count: 1 })
+      await vi.advanceTimersByTimeAsync(61_000)
+      expect(h.receive).toHaveBeenCalledTimes(1) // passing mail is received
+      for (const dispose of disposers) await dispose()
+      await h.stop()
+    } finally { vi.useRealTimers() }
+  })
+
   it('skips mail from senders outside the whitelist while still advancing the thread cursor', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
