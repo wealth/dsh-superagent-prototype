@@ -4,8 +4,9 @@ import { mattermostKind, mattermostTrigger } from '../src/sources/mattermost.ts'
 import { commentTrigger, githubAddress, githubChannel, issueTrigger, type GithubComment, type GithubIssue } from '../src/sources/github-trigger.ts'
 import { claimPull, observePull, pullEndNotices, pullOf, ticketBranch, type Pull } from '../src/sources/github-pull.ts'
 import { ciCounts, ciFact, ciSummary } from '../src/sources/github-read.ts'
-import { apply as applyGithub, githubKind, pollFailure, pollRound } from '../src/sources/github.ts'
+import { apply as applyGithub, githubKind, pollDeploys, pollFailure, pollRound } from '../src/sources/github.ts'
 import { pollThreads as pollGithubThreads } from '../src/sources/github.ts'
+import { KV } from '../src/kv.ts'
 import { SourceRegistry } from '../src/sources/registry.ts'
 import { cursorAt, POLL_HORIZON_MS } from '../src/sources/poll.ts'
 import { Store } from '../src/app/store.ts'
@@ -783,6 +784,39 @@ describe('source context', () => {
       origin: { triggerId: 'source-t1' } })
     h.store.close()
   })
+})
+it('watches the deploy checks of a merged ticket through its closed follow, once per pull request', async () => {
+  const h = host()
+  const at = new Date().toISOString()
+  const ticket: Ticket = { ...openTicket('t1'), execution: execution('scan'),
+    follows: [{ thread: 'github:161', own: true, closed: { at, outcome: 'merged' } }],
+    ended: { at, by: 'executor', outcome: 'merged' } }
+  h.store.tickets.save(ticket)
+  h.store.saveSettings({ ...h.store.settings(), sources: { ...h.store.settings().sources,
+    github: { enabled: true, config: { repository: 'acme/widgets', cli: 'gh', deployChecks: [{ name: 'deploy' }] } } } })
+  const calls: string[][] = []
+  vi.spyOn(h.commands, 'run').mockImplementation(async (_program, args) => {
+    calls.push(args)
+    const bare = args[1]!.replace(/^repos\/acme\/widgets\/?/, '')
+    if (bare.startsWith('pulls/')) return JSON.stringify({ number: 161, merge_commit_sha: 'sha-161' })
+    if (bare.startsWith('commits/') && bare.includes('/check-runs')) return JSON.stringify([
+      { check_runs: [{ id: 1, name: 'lint', status: 'completed', conclusion: 'success', details_url: '' }] },
+      { check_runs: [{ id: 2, name: 'Deploy', status: 'completed', conclusion: 'success', details_url: 'https://ci/deploy/2' }] },
+      { check_runs: [] }])
+    return JSON.stringify([])
+  })
+  await pollDeploys(h)
+  expect(h.receive).toHaveBeenCalledTimes(1)
+  expect(h.receive.mock.calls[0]![0]).toMatchObject({ source: 'github', actor: { source: 'github', id: 'deploy' }, human: false,
+    meta: { kind: 'deploy', number: 161, ticketId: 't1', check: 'Deploy', conclusion: 'success' } })
+  expect(h.state.get(KV.github.deployed(161))).toMatchObject({ check: 'Deploy', runId: 2, conclusion: 'success', ticketId: 't1' })
+  // A conclusion already recorded stays silent, and so does a ticket whose follow names no pull request.
+  const quiet = { ...openTicket('t2'), ended: { at, by: 'executor' as const, outcome: 'merged' as const } }
+  h.store.tickets.save(quiet)
+  await pollDeploys(h)
+  expect(h.receive).toHaveBeenCalledTimes(1)
+  expect(calls.filter(args => args[1]!.replace(/^repos\/acme\/widgets\/?/, '').startsWith('pulls/'))).toHaveLength(1)
+  h.store.close()
 })
 it('reports GitHub as failing only after the configured number of consecutive failed polls', () => {
   const eof = new Error('Get "https://api.github.com/x": EOF')

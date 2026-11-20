@@ -453,14 +453,16 @@ export async function pollDeploys(ctx: SourceContext, signal?: AbortSignal, conf
   for (const ticket of ctx.tickets.ended()) {
     if (signal?.aborted) return
     if (ticket.ended?.outcome !== 'merged' || ticket.ended.at < horizon) continue
-    for (const number of pullsOf(ticket, true)) {
+    // A merged ticket's follow on its own PR closes at the merge, so the watcher reads every follow, not only open ones.
+    for (const number of pullsOf(ticket)) {
       if (signal?.aborted) return
       const seen = ctx.state.get(KV.github.deployed(number))
       if (seen) continue
-      const head = z.looseObject({ merge_commit_sha: z.string().nullish() }).parse(await commands.api(`pulls/${number}`))
+      const head = await commands.api(z.looseObject({ merge_commit_sha: z.string().nullish() }), `pulls/${number}`)
       if (!head.merge_commit_sha) continue
       const page = z.looseObject({ check_runs: z.array(z.unknown()) })
-      const runs = validItems(DeployCheckSchema, page.parse(JSON.parse(body(await commands.api(`commits/${head.merge_commit_sha}/check-runs?per_page=100`, '--paginate', '--slurp')))).check_runs)
+      const pages = await commands.api(z.array(page), `commits/${head.merge_commit_sha}/check-runs?per_page=100`, '--paginate', '--slurp')
+      const runs = validItems(DeployCheckSchema, pages.flatMap(page => page.check_runs))
       for (const run of runs) {
         if (!names.includes(run.name.toLowerCase())) continue
         if (run.status !== 'completed' || !run.conclusion) break
@@ -475,11 +477,6 @@ export async function pollDeploys(ctx: SourceContext, signal?: AbortSignal, conf
 }
 /** The Bot API-independent check run fields the deploy watch reads; loose like the CI read. */
 const DeployCheckSchema = z.looseObject({ id: z.number(), name: z.string(), status: z.string(), conclusion: z.string().nullable(), details_url: z.string().nullish() })
-/** Splits a gh `--include` response into headers and JSON body (the notifications reader does the same). */
-function body(raw: string): string {
-  const split = raw.search(/\r?\n\r?\n/)
-  return split < 0 ? raw : raw.slice(split).trim()
-}
 /** Polls subscribed Issue and PR Threads not already read in this round; a deleted (410) Issue is still polled within the horizon (costing one read) and does not fail the round. */
 export async function pollThreads(ctx: SourceContext, signal?: AbortSignal, round = newRound(signal)): Promise<void> {
   await pollEach(ctx, SOURCE, () => stopped(ctx, round), async thread => {
